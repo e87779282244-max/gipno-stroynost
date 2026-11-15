@@ -170,6 +170,9 @@ const EXINFO={
   crunch:{n:'Скручивания',img:'media/crunch.jpg',t:'Лёгкие скручивания: поясница прижата, подъём за счёт пресса, без рывков шеей.'},
   bottle:{n:'Приседание + жим гантелей',img:'media/bottle.jpg',t:'Гантели у плеч → присед → на подъёме жим над головой одним движением. Начните с лёгких гантелей 2–4 кг в каждой руке (мужчинам можно 4–6 кг). Нет гантелей — подойдут бутылки с водой 0,5–1,5 л. Если техника распадается — оставайтесь на прошлом объёме.'}
 };
+let AC=null;
+function audioInit(){if(S.profile&&S.profile.sound==='off')return;try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();if(AC.state==='suspended')AC.resume()}catch(e){}}
+function beep(f,d){if(!AC||(S.profile&&S.profile.sound==='off'))return;try{const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=f;o.type='sine';g.gain.setValueAtTime(.0001,AC.currentTime);g.gain.exponentialRampToValueAtTime(.35,AC.currentTime+.02);g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+d);o.connect(g).connect(AC.destination);o.start();o.stop(AC.currentTime+d+.05)}catch(e){}}
 let S=load(), VIEW={tab:'today',day:null,art:null}, tick=null, plankT=null;
 function load(){try{return JSON.parse(localStorage.getItem(KEY))||{days:{},weeks:{},final:{}}}catch(e){return {days:{},weeks:{},final:{}}}}
 function save(noPush){if(!noPush){S._upd=Date.now()}try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(!noPush)cloudPushSoon()}
@@ -275,7 +278,7 @@ const PREP_Q=["Я начинаю не с запретов, а с подгото�
 const PREP_T=[
  ['sweets','Убрать из дома сладкое, выпечку и сладкие напитки','или хотя бы убрать с глаз'],
  ['shop','Купить базу на первую неделю','курица, говядина, белая рыба, индейка, яйца, капуста, огурцы, помидоры, зелень, кефир'],
- ['measure','Сделать замеры «до»','вес и талия — утром, натощак'],
+ ['measure','Сделать замеры и фото «до»','вес, талия, бёдра, грудь, рука — утром, натощак'],
  ['readig','Прочитать про пищевое окно и пятницы','','lib'],
  ['supps','Добавки — по желанию','рыбий жир, витамин D, цинк, магний; при заболеваниях и лекарствах — согласуйте с врачом'],
  ['remind','Настроить напоминания','','me']];
@@ -292,7 +295,7 @@ function renderPrep(pi){
   h+=`<div class="card mind"><h3>Установка дня</h3><div class="txt">${esc(q)}</div><div class="tiny muted" style="margin-top:8px">Прочитайте медленно, 2–3 раза.</div>${chk(0,'morning','Прочитал(а) установку')}</div>`;
   h+=`<div class="card"><h3>Подготовка к старту <span class="r">${done}/${PREP_T.length}</span></h3>${PREP_T.map(([k,t,s,go])=>{
     const on=!!T[k];let extra='';
-    if(k==='measure')extra=`<div class="grid2" style="margin:6px 0 0 38px"><div class="field"><label>Вес, кг</label><input inputmode="decimal" data-pw="w0" value="${esc(S.profile.w0)}"></div><div class="field"><label>Талия, см</label><input inputmode="decimal" data-pw="waist0" value="${esc(S.profile.waist0)}"></div></div>`;
+    if(k==='measure')extra=`<div class="grid2" style="margin:6px 0 0 38px"><div class="field"><label>Вес, кг</label><input inputmode="decimal" data-pw="w0" value="${esc(S.profile.w0)}"></div>${MEAS.map(([q,l])=>`<div class="field"><label>${l}, см</label><input inputmode="decimal" data-pw="${q}0" value="${esc(S.profile[q+'0'])}"></div>`).join('')}</div><div style="margin:0 0 8px 38px"><div class="tiny muted" style="margin-bottom:6px">Фото «до» — спереди и сбоку, в одной одежде и при одном свете:</div>${photoGrid(['start'])}</div>`;
     if(go)extra=`<div style="margin:0 0 8px 38px"><button class="btn ghost sm" data-go="${go==='lib'?'lib:s1':'me'}">${go==='lib'?'Открыть':'Перейти в профиль'}</button></div>`;
     return `<div class="check ${on?'on':''}" data-pt="${k}"><div class="box"></div><div class="lbl">${esc(t)}${s?`<small>${esc(s)}</small>`:''}</div></div>${extra}`}).join('')}</div>`;
   h+=`<div class="card"><h3>Питание в подготовке</h3><div class="small" style="line-height:1.45">Ешьте как обычно, но уже <b>без перекусов между приёмами</b> и <b>без сладких напитков</b>. Пищевое окно и разгрузки начнутся с понедельника.</div>
@@ -514,14 +517,22 @@ function bindDay(n){
   // планка
   const pg=$('#plank-go'),ps=$('#plank-save'),pt=$('#plank-t');let t0=0,el=0;const target=n>0?DAYS[n-1].plank:20;
   if(pg)pg.onclick=()=>{
-    if(plankT){clearInterval(plankT);plankT=null;pg.textContent='Старт';ps.hidden=el===0;return}
-    t0=Date.now();el=0;pg.textContent='Стоп';ps.hidden=true;let buzzed=false;
-    plankT=setInterval(()=>{el=Math.floor((Date.now()-t0)/1000);pt.textContent=el+' с';if(el>=target&&!buzzed){buzzed=true;pt.style.color='var(--good)';if(navigator.vibrate)navigator.vibrate([200,100,200])}},250);
+    if(plankT){clearInterval(plankT);plankT=null;pg.textContent='Старт';ps.hidden=el===0;pt.style.color='';return}
+    audioInit();pg.textContent='Стоп';ps.hidden=true;el=0;let cd=3,buzzed=false,lastTick=-1;
+    pt.textContent='Приготовьтесь… 3';beep(660,.12);
+    plankT=setInterval(()=>{
+      if(cd>0){cd--;if(cd>0){pt.textContent='Приготовьтесь… '+cd;beep(660,.12)}else{pt.textContent='0 с';beep(990,.3);t0=Date.now()}return}
+      el=Math.floor((Date.now()-t0)/1000);const left=target-el;
+      pt.textContent=el+' с'+(left>0?' / '+target:'');
+      if(left>0&&left<=3&&lastTick!==el){lastTick=el;beep(770,.08)}
+      if(el>=target&&!buzzed){buzzed=true;pt.style.color='var(--good)';beep(990,.18);setTimeout(()=>beep(1320,.35),220);if(navigator.vibrate)navigator.vibrate([200,100,200])}
+    },1000);
   };
   if(ps)ps.onclick=()=>{x.plank=String(Math.max(el,num(x.plank)||0));save();toast('Планка: '+el+' с');rerender()};
   document.querySelectorAll('[data-pt]').forEach(el=>el.onclick=()=>{const T=S.prep.tasks;T[el.dataset.pt]=!T[el.dataset.pt];save();rerender()});
   document.querySelectorAll('[data-go]').forEach(el=>el.onclick=()=>{const [tab,art]=el.dataset.go.split(':');VIEW.tab=tab;VIEW.art=art||null;render();scrollTo(0,0)});
   document.querySelectorAll('[data-pw]').forEach(el=>el.onchange=()=>{S.profile[el.dataset.pw]=el.value.trim();save()});
+  bindPhotos();
   if(n>0)startTick(n);
 }
 function startTick(n){
@@ -598,13 +609,24 @@ function renderProgress(){
     <div class="stat"><b style="font-size:14px;line-height:1.2;padding:4px 0">${top?TRIG[top[0]].n:'—'}</b><span>частая причина</span></div></div>
     <div class="tiny muted" style="margin:12px 0 4px;font-weight:600">Голод перед первым приёмом, среднее по неделям</div>
     <div class="grid3" style="grid-template-columns:repeat(4,1fr)">${hbw.map((v,i)=>`<div class="stat"><b>${f1(v)}</b><span>нед. ${i+1}</span></div>`).join('')}</div></div>`;
+  h+=`<div class="card"><h3>Фото прогресса <span class="r">спереди и сбоку</span></h3>${photoGrid(['start','d15','d30'])}${photoCompareBtn()}</div>`;
+  h+=measCard();
   h+=`<div class="card chart"><h3>Вес <span class="r">зелёным — среднее недели</span></h3>${lineChart(wpts,{avg:ws})}</div>`;
   h+=`<div class="card chart"><h3>Шаги</h3>${lineChart(series('steps'),{bars:true,goal:[[1,7,10000],[8,14,11000],[15,21,13000],[22,30,15000]]})}</div>`;
   h+=`<div class="card chart"><h3>Планка, с</h3>${lineChart(series('plank'))}</div>`;
-  h+=`<div class="card"><h3>Контрольные точки</h3>${[1,2,3,4].map(w=>`<div class="lib-item" data-wk="${w}"><div><div class="cat">Дни ${(w-1)*7+1}–${w*7}</div><div class="nm">Итоги недели ${w}</div></div><span class="chev">›</span></div>`).join('')}
+  h+=`<div class="card"><h3>Контрольные точки</h3>${[1,2,3,4].map(w=>`<div class="lib-item" data-wk="${w}"><div><div class="cat">Дни ${(w-1)*7+1}–${w*7}</div><div class="nm">Итоги недели ${w}${(S.weeks[w]||{}).done?' <span class="pill good">✓</span>':''}</div></div><span class="chev">›</span></div>`).join('')}
     <div class="lib-item" data-wk="final"><div><div class="cat">Финиш</div><div class="nm">Старт → день 30</div></div><span class="chev">›</span></div></div>`;
   return h;
 }
+const MEAS=[['waist','Талия'],['hips','Бёдра'],['chest','Грудь'],['arm','Рука']];
+function measStart(k){return num(S.profile[k+'0'])}
+function measCard(){
+  const cols=[['Старт',k=>measStart(k)],...[1,2,3,4].map(w=>['Н'+w,k=>num((S.weeks[w]||{})[k])]),['Д30',k=>num(S.final[k])]];
+  const any=MEAS.some(([k])=>cols.some(c=>c[1](k)!==null));
+  if(!any)return `<div class="card"><h3>Обхваты, см</h3><div class="small muted">Внесите стартовые обхваты в профиле, затем — в итогах каждой недели.</div></div>`;
+  return `<div class="card"><h3>Обхваты, см</h3><div style="overflow-x:auto"><table class="cmp"><tr><th></th>${cols.map(c=>`<th style="text-align:center">${c[0]}</th>`).join('')}<th style="text-align:center">±</th></tr>
+  ${MEAS.map(([k,l])=>{const vals=cols.map(c=>c[1](k));const f=vals.find(v=>v!==null),la=[...vals].reverse().find(v=>v!==null);const dlt=f!==null&&la!==null&&vals.filter(v=>v!==null).length>1?la-f:null;
+    return `<tr><td>${l}</td>${vals.map(v=>`<td style="text-align:center">${v===null?'—':f1(v)}</td>`).join('')}<td style="text-align:center;font-weight:800;color:${dlt<0?'var(--good)':dlt>0?'var(--warn)':'inherit'}">${dlt===null?'':(dlt>0?'+':'')+f1(dlt)}</td></tr>`}).join('')}</table></div></div>`}
 function renderWeek(w){
   const s=weekStats(w),r=S.weeks[w]||(S.weeks[w]={});
   return `<button class="back" data-back>‹ Прогресс</button>
@@ -616,18 +638,20 @@ function renderWeek(w){
     <div class="stat"><b>${f1(s.sleep)}</b><span>средний сон, ч</span></div>
     <div class="stat"><b>${s.window}/7</b><span>дней по окну</span></div>
     <div class="stat"><b>${s.train}</b><span>тренировок</span></div>
-    <div class="stat"><input inputmode="decimal" data-wf="waist" value="${esc(r.waist)}" placeholder="—" style="text-align:center;font-weight:800;padding:4px"><span>талия, см</span></div>
   </div></div>
+  <div class="card"><h3>Обхваты, см <span class="r">утром, натощак</span></h3><div class="grid2">${MEAS.map(([k,l])=>`<div class="field"><label>${l}${measStart(k)!==null?' (старт '+f1(measStart(k))+')':''}</label><input inputmode="decimal" data-wf="${k}" value="${esc(r[k])}"></div>`).join('')}</div></div>
   <div class="card"><h3>Короткая ревизия</h3>
     ${[['best','Что получилось лучше всего'],['hinder','Что чаще всего мешало'],['repeat','Какое решение повторю на следующей неделе'],['action','Одно главное действие на следующую неделю']].map(([k,l])=>`<div class="field"><label>${l}</label><textarea data-wf="${k}">${esc(r[k])}</textarea></div>`).join('')}
-  </div>`;
+  </div>
+  ${w===2?`<div class="card"><h3>Фото на середине пути</h3><div class="small muted" style="margin-bottom:8px">Сделайте фото «день 15» — потом сравните со стартом.</div>${photoGrid(['d15'])}</div>`:''}
+  <button class="btn wide ${r.done?'ghost':''}" id="wk-done">${r.done?'✓ Итоги подведены':'Готово — итоги подведены'}</button><div style="height:10px"></div>`;
 }
 function renderFinal(){
   const F=S.final,p=S.profile;const wpts=series('weight');
   const avgSteps0=weekStats(1).steps,avgSteps4=weekStats(4).steps;
   const firstMeal=d=>{for(const i of d){const m=(S.days[i]||{}).mealTime;if(m)return m}return '—'};
   const rows=[['Вес',p.w0||(wpts[0]?f1(wpts[0][1]):'—'),wpts.length?f1(wpts[wpts.length-1][1]):'—'],
-    ['Талия',p.waist0||'—',`<input data-ff="waist" inputmode="decimal" value="${esc(F.waist)}">`],
+    ...MEAS.map(([k,l])=>[l+', см',p[k+'0']||'—',`<input data-ff="${k}" inputmode="decimal" value="${esc(F[k])}">`]),
     ['Средние шаги',avgSteps0?Math.round(avgSteps0).toLocaleString('ru-RU'):'—',avgSteps4?Math.round(avgSteps4).toLocaleString('ru-RU'):'—'],
     ['Планка',(S.days[1]||{}).plank||'—',(S.days[30]||{}).plank||'—'],
     ['Первый приём пищи',firstMeal([1,2,3]),firstMeal([30,29,28])],
@@ -636,13 +660,18 @@ function renderFinal(){
   return `<button class="back" data-back>‹ Прогресс</button>
   <div class="card"><h3>30 дней завершены. Система остаётся.</h3>
   <table class="cmp"><tr><th>Показатель</th><th>Старт</th><th>День 30</th></tr>${rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</table></div>
-  <div class="card"><h3>Пять правил на следующие 90 дней</h3>${[0,1,2,3,4].map(i=>`<div class="field"><input data-ff="rule${i}" placeholder="${i+1}." value="${esc(F['rule'+i])}"></div>`).join('')}</div>`;
+  <div class="card"><h3>Фото: старт → день 30</h3>${photoGrid(['start','d30'])}${photoCompareBtn()}</div>
+  <div class="card"><h3>Пять правил на следующие 90 дней</h3>${[0,1,2,3,4].map(i=>`<div class="field"><input data-ff="rule${i}" placeholder="${i+1}." value="${esc(F['rule'+i])}"></div>`).join('')}</div>
+  <button class="btn wide ${F.done?'ghost':''}" id="fin-done">${F.done?'✓ Итог подведён':'Готово — итог подведён'}</button><div style="height:10px"></div>`;
 }
 function bindProgress(){
   document.querySelectorAll('[data-wk]').forEach(el=>el.onclick=()=>{VIEW.week=el.dataset.wk==='final'?'final':+el.dataset.wk;render();scrollTo(0,0)});
   document.querySelectorAll('[data-back]').forEach(el=>el.onclick=()=>{VIEW.week=null;render()});
   document.querySelectorAll('[data-wf]').forEach(el=>el.onchange=()=>{S.weeks[VIEW.week][el.dataset.wf]=el.value.trim();save()});
   document.querySelectorAll('[data-ff]').forEach(el=>el.onchange=()=>{S.final[el.dataset.ff]=el.value.trim();save()});
+  const fd=$('#fin-done');if(fd)fd.onclick=()=>{S.final.done=true;save();toast('Поздравляем с финишем!');VIEW.week=null;render();scrollTo(0,0)};
+  const wd=$('#wk-done');if(wd)wd.onclick=()=>{const r=S.weeks[VIEW.week];r.done=true;save();toast('Итоги недели '+VIEW.week+' сохранены');VIEW.week=null;render();scrollTo(0,0)};
+  bindPhotos();
 }
 
 /* ---------- СПРАВОЧНИК ---------- */
@@ -736,6 +765,50 @@ function bindRem(){
   $('#ics').onclick=exportIcs;
 }
 
+/* ---------- ФОТО ПРОГРЕССА (IndexedDB + облако) ---------- */
+const PSLOT={start:'Старт',d15:'День 15',d30:'День 30'},PVIEW={front:'Спереди',side:'Сбоку'};
+const PCACHE={};
+function idb(){return new Promise((ok,no)=>{const r=indexedDB.open('gipno',1);r.onupgradeneeded=()=>r.result.createObjectStore('photos');r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+async function idbOp(mode,fn){const db=await idb();return new Promise((ok,no)=>{const tx=db.transaction('photos',mode),st=tx.objectStore('photos');const rq=fn(st);tx.oncomplete=()=>ok(rq&&rq.result);tx.onerror=()=>no(tx.error)})}
+const photoGet=id=>PCACHE[id]?Promise.resolve(PCACHE[id]):idbOp('readonly',s=>s.get(id)).then(v=>{if(v)PCACHE[id]=v;return v}).catch(()=>null);
+const photoPut=(id,v)=>{PCACHE[id]=v;return idbOp('readwrite',s=>s.put(v,id)).catch(()=>{})};
+const photoDel=id=>{delete PCACHE[id];return idbOp('readwrite',s=>s.delete(id)).catch(()=>{})};
+function findPhoto(slot,view){return (S.photos||[]).find(p=>p.slot===slot&&p.view===view)}
+function compress(file){return new Promise((ok,no)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{const m=900,k=Math.min(1,m/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);ok(c.toDataURL('image/jpeg',.75))};im.onerror=()=>no(new Error('img'));im.src=u})}
+function photoGrid(slots){return `<div style="display:grid;grid-template-columns:repeat(${slots.length*2>4?3:slots.length*2},1fr);gap:8px">${slots.map(s=>['front','side'].map(v=>{const p=findPhoto(s,v);
+  return `<div data-ph="${s}:${v}" style="aspect-ratio:3/4;border-radius:12px;border:2px dashed ${p?'transparent':'var(--line)'};background:var(--app) center/cover no-repeat;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;overflow:hidden" ${p?`data-pid="${p.id}"`:''}>
+   ${p?'':`<div style="font-size:24px;color:var(--faint)">＋</div>`}<div class="tiny" style="position:absolute;left:0;right:0;bottom:0;padding:4px 6px;background:${p?'rgba(0,0,0,.45)':'transparent'};color:${p?'#fff':'var(--muted)'};font-weight:700;text-align:center">${PSLOT[s]} • ${PVIEW[v]}</div></div>`}).join('')).join('')}</div>`}
+function photoCompareBtn(){const has=['front','side'].some(v=>findPhoto('start',v)&&(findPhoto('d30',v)||findPhoto('d15',v)));return has?`<button class="btn ghost sm" id="ph-cmp" style="margin-top:10px">Сравнить старт и последнее фото</button>`:''}
+function bindPhotos(){
+  document.querySelectorAll('[data-pid]').forEach(el=>photoGet(el.dataset.pid).then(v=>{if(v)el.style.backgroundImage=`url(${v})`}));
+  document.querySelectorAll('[data-ph]').forEach(el=>el.onclick=async()=>{const [slot,view]=el.dataset.ph.split(':');const p=findPhoto(slot,view);
+    if(p){const v=await photoGet(p.id);photoView([[PSLOT[slot]+' • '+PVIEW[view],v]],p);return}
+    const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.onchange=async()=>{const f=inp.files[0];if(!f)return;try{const data=await compress(f);const id='p'+Date.now();await photoPut(id,data);
+      (S.photos=S.photos||[]).push({id,slot,view,ts:Date.now(),day:curDay()});save();cloudPhotoUp(id,data);toast('Фото сохранено');rerender()}catch(e){toast('Не удалось открыть фото')}};inp.click()});
+  const c=$('#ph-cmp');if(c)c.onclick=async()=>{const pairs=[];for(const v of ['front','side']){const a=findPhoto('start',v),b=findPhoto('d30',v)||findPhoto('d15',v);if(a&&b)pairs.push(['Старт • '+PVIEW[v],await photoGet(a.id)],[PSLOT[b.slot]+' • '+PVIEW[v],await photoGet(b.id)])}photoView(pairs)};
+}
+function photoView(items,del){const o=document.createElement('div');o.className='ov';o.id='ov';
+  o.innerHTML=`<div class="in"><div class="row between"><div style="font-weight:800;opacity:.8">Фото прогресса</div><button class="x" id="pvx">Закрыть</button></div>
+  <div style="display:grid;grid-template-columns:${items.length>1?'1fr 1fr':'1fr'};gap:8px;margin-top:14px">${items.map(([l,v])=>`<div><img src="${v||''}" style="width:100%;border-radius:12px;display:block"><div class="tiny" style="text-align:center;margin-top:4px;opacity:.85">${esc(l)}</div></div>`).join('')}</div>
+  ${del?`<button class="ch" id="pvd" style="text-align:center;margin-top:16px">Удалить и переснять</button>`:''}</div>`;
+  document.body.appendChild(o);o.querySelector('#pvx').onclick=()=>o.remove();
+  const d=o.querySelector('#pvd');if(d)d.onclick=async()=>{o.remove();if(!await ask('Удалить это фото?',{ok:'Удалить'}))return;S.photos=(S.photos||[]).filter(p=>p.id!==del.id);(S.photosDel=S.photosDel||[]).push(del.id);photoDel(del.id);cloudPhotoDel(del.id);save();rerender()}}
+function cloudPhotoUp(id,data){if(!CL.user)return;CL.db.collection('users').doc(CL.user.uid).collection('photos').doc(id).set({data}).catch(()=>{})}
+function cloudPhotoDel(id){if(!CL.user)return;CL.db.collection('users').doc(CL.user.uid).collection('photos').doc(id).delete().catch(()=>{})}
+async function cloudPhotosSync(){if(!CL.user)return;const del=new Set(S.photosDel||[]);S.photos=(S.photos||[]).filter(p=>!del.has(p.id));
+  for(const p of S.photos){const have=await photoGet(p.id);const ref=CL.db.collection('users').doc(CL.user.uid).collection('photos').doc(p.id);
+    if(!have){try{const d=await ref.get();if(d.exists)await photoPut(p.id,d.data().data)}catch(e){}}
+    else if(!p.up){try{await ref.set({data:have});p.up=1}catch(e){}}}}
+
+/* ---------- АВТО-ИТОГИ НЕДЕЛИ ---------- */
+function weekPrompt(){const t=curDay(),now=new Date(),today=iso(now);if(!S.profile||t<7)return;
+  let w=null;for(let k=4;k>=1;k--){const r=S.weeks[k]||{};const due=t>k*7||(t===k*7&&now.getHours()>=17);if(due&&!r.done){w=k;break}}
+  const fin=(t>30||(t===30&&now.getHours()>=17))&&!S.final.done;
+  if(fin&&S.final.snooze!==today){setTimeout(async()=>{if($('#ov'))return;const ok=await ask('30 дней позади! Подведём итог: старт → день 30 и пять правил на 90 дней.',{ok:'Подвести',cancel:'Позже'});if(ok){VIEW.tab='progress';VIEW.week='final';render();scrollTo(0,0)}else{S.final.snooze=today;save()}},600);return}
+  if(!w)return;const r=S.weeks[w]||(S.weeks[w]={});if(r.snooze===today)return;
+  setTimeout(async()=>{if($('#ov'))return;const ok=await ask('Неделя '+w+' завершена. Подведём итоги? Это 3 минуты: обхваты и четыре коротких вопроса.',{ok:'Подвести',cancel:'Позже'});
+    if(ok){VIEW.tab='progress';VIEW.week=w;render();scrollTo(0,0)}else{r.snooze=today;save()}},600)}
+
 /* ---------- ОБЛАКО (Firebase) ---------- */
 const FB_VER='10.14.1',FB_CFG={apiKey:"AIzaSyBdU4NgwPRomywCDJ4rikQY7hyGt-AoOok",authDomain:"gipno-stroynost.firebaseapp.com",projectId:"gipno-stroynost",storageBucket:"gipno-stroynost.firebasestorage.app",messagingSenderId:"247490589201",appId:"1:247490589201:web:d85b183df529a0744d37b0"};
 const CL={ok:false,user:null,busy:false,msg:'',err:false,pushT:null,loading:null};
@@ -763,7 +836,7 @@ async function cloudPull(first){if(!CL.user||!navigator.onLine)return;let d;try{
   if(localChanged)await cloudPush();}
 async function cloudStart(){if(!cloudAllowed())return;try{await fbLoad()}catch(e){return}
   try{await CL.auth.getRedirectResult()}catch(e){CL.msg=fbErrText(e);CL.err=true}
-  CL.auth.onAuthStateChanged(async u=>{CL.user=u||null;refreshCloudUI();if(u){await cloudPull(true);refreshCloudUI()}});
+  CL.auth.onAuthStateChanged(async u=>{CL.user=u||null;refreshCloudUI();if(u){await cloudPull(true);refreshCloudUI();await cloudPhotosSync();save(true);if(VIEW.tab==='progress')rerender()}});
   addEventListener('online',()=>{if(CL.user)cloudPull()});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&CL.user)cloudPull()});}
 function fbErrText(e){const c=(e&&e.code)||'';return ({'auth/invalid-email':'Неверный формат почты','auth/user-not-found':'Такой почты нет — зарегистрируйтесь','auth/wrong-password':'Неверный пароль','auth/invalid-credential':'Неверная почта или пароль','auth/email-already-in-use':'Эта почта уже зарегистрирована — войдите','auth/weak-password':'Пароль минимум 6 символов','auth/network-request-failed':'Нет интернета','auth/too-many-requests':'Слишком много попыток, подождите','auth/popup-closed-by-user':'Окно входа закрыто'})[c]||('Ошибка: '+(c||e.message||e))}
@@ -802,7 +875,11 @@ function renderMe(){const p=S.profile;
     <div class="field"><label>Стакан воды, мл</label><input data-p="glass" inputmode="numeric" value="${esc(p.glass||250)}"></div>
     <div class="field"><label></label></div>
     <div class="field"><label>Стартовый вес</label><input data-p="w0" inputmode="decimal" value="${esc(p.w0)}"></div>
-    <div class="field"><label>Стартовая талия</label><input data-p="waist0" inputmode="decimal" value="${esc(p.waist0)}"></div></div>
+    <div class="field"><label>Стартовая талия</label><input data-p="waist0" inputmode="decimal" value="${esc(p.waist0)}"></div>
+    <div class="field"><label>Стартовые бёдра</label><input data-p="hips0" inputmode="decimal" value="${esc(p.hips0)}"></div>
+    <div class="field"><label>Стартовая грудь</label><input data-p="chest0" inputmode="decimal" value="${esc(p.chest0)}"></div>
+    <div class="field"><label>Стартовая рука</label><input data-p="arm0" inputmode="decimal" value="${esc(p.arm0)}"></div>
+    <div class="field"><label>Звук таймера планки</label><select data-p="sound"><option value="on" ${p.sound!=='off'?'selected':''}>Включён</option><option value="off" ${p.sound==='off'?'selected':''}>Выключен</option></select></div></div>
     <div class="field"><label>Моя цель на 30 дней</label><textarea data-p="goal">${esc(p.goal)}</textarea></div></div>
   ${renderCloud()}
   ${renderRem()}
@@ -811,15 +888,15 @@ function renderMe(){const p=S.profile;
     <input type="file" id="impf" accept=".json,application/json" hidden>
     ${S.fastScr?`<button class="btn ghost sm" id="refast" style="margin-top:14px;display:block">Пройти заново анкету длительной паузы</button>`:''}
     <button class="btn ghost sm" id="reset" style="margin-top:14px;color:#b33">Начать программу заново</button></div>
-  <div class="tiny muted" style="text-align:center;padding:10px">Гипно-стройность • v0.8</div>`}
+  <div class="tiny muted" style="text-align:center;padding:10px">Гипно-стройность • v0.9</div>`}
 function bindMe(){
   bindCloud();
   const rf=$('#refast');if(rf)rf.onclick=()=>{delete S.fastScr;save();toast('Анкета сброшена — она откроется в пятницу');rerender()};
   bindRem();
   document.querySelectorAll('[data-p]').forEach(el=>el.onchange=()=>{let v=el.value.trim();if(el.dataset.p==='start'&&v){const m=mondayFrom(v);if(m!==v){toast('День 1 — понедельник, '+fmtDate(parseISO(m)));}S.profile.prep=v<iso(new Date())?S.profile.prep:v;v=m}S.profile[el.dataset.p]=v;save();if(el.dataset.p==='start')rerender();else toast('Сохранено')});
-  $('#exp').onclick=()=>saveFile('gipno-stroynost-'+iso(new Date())+'.json',JSON.stringify(S,null,1),'application/json');
+  $('#exp').onclick=async()=>{const o=JSON.parse(JSON.stringify(S));o._photos={};for(const p of (S.photos||[])){const v=await photoGet(p.id);if(v)o._photos[p.id]=v}saveFile('gipno-stroynost-'+iso(new Date())+'.json',JSON.stringify(o),'application/json')};
   $('#imp').onclick=()=>$('#impf').click();
-  $('#impf').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{const d=JSON.parse(t);if(!d.profile)throw 0;ask('Заменить текущие данные копией?').then(okk=>{if(!okk)return;S=d;S.weeks=S.weeks||{};S.final=S.final||{};save();toast('Копия загружена');render()})}catch(_){toast('Файл не подходит')}})};
+  $('#impf').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{const d=JSON.parse(t);if(!d.profile)throw 0;ask('Заменить текущие данные копией?').then(okk=>{if(!okk)return;const ph=d._photos||{};delete d._photos;Object.entries(ph).forEach(([id,v])=>photoPut(id,v));S=d;S.weeks=S.weeks||{};S.final=S.final||{};save();toast('Копия загружена');render()})}catch(_){toast('Файл не подходит')}})};
   $('#reset').onclick=async()=>{if(!await ask('Удалить все отметки и начать заново? Сначала лучше сохранить копию.',{ok:'Удалить'}))return;S={days:{},weeks:{},final:{}};save();render()};
 }
 
@@ -843,7 +920,7 @@ function render(){
   if(VIEW.tab==='today'){const n=VIEW.day||Math.min(30,Math.max(1,t));
     if(VIEW.day&&VIEW.day!==t)top+=`<button class="back" id="to-today">‹ К сегодняшнему дню</button>`;
     if(t>30&&!VIEW.day)top+=`<div class="card"><b>30 дней пройдены.</b> <span class="muted">Подведите итог во вкладке «Прогресс».</span></div>`;
-    body=renderDay(n);$('#app').innerHTML=top+body;bindDay(n);const b=$('#to-today');if(b)b.onclick=()=>{VIEW.day=null;render()};return}
+    body=renderDay(n);$('#app').innerHTML=top+body;bindDay(n);if(!VIEW.day&&!VIEW._wp){VIEW._wp=1;weekPrompt()}const b=$('#to-today');if(b)b.onclick=()=>{VIEW.day=null;render()};return}
   if(VIEW.tab==='plan'){$('#app').innerHTML=top+renderPlan();document.querySelectorAll('[data-day]').forEach(el=>el.onclick=()=>{VIEW.tab='today';VIEW.day=+el.dataset.day;render();scrollTo(0,0)});return}
   if(VIEW.tab==='progress'){$('#app').innerHTML=top+renderProgress();bindProgress();return}
   if(VIEW.tab==='lib'){$('#app').innerHTML=top+renderLib();bindLib();return}

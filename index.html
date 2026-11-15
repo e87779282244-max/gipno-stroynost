@@ -172,7 +172,7 @@ const EXINFO={
 };
 let S=load(), VIEW={tab:'today',day:null,art:null}, tick=null, plankT=null;
 function load(){try{return JSON.parse(localStorage.getItem(KEY))||{days:{},weeks:{},final:{}}}catch(e){return {days:{},weeks:{},final:{}}}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function save(noPush){if(!noPush){S._upd=Date.now()}try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(!noPush)cloudPushSoon()}
 function toast(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),1800)}
 const $=s=>document.querySelector(s);
 function ask(msg,{input=null,ok='Да',cancel='Отмена'}={}){return new Promise(res=>{
@@ -243,10 +243,12 @@ function renderOnboarding(){
     <div class="check" id="ob-ok" style="margin-top:8px"><div class="box"></div><div class="lbl">Понимаю и принимаю</div></div>
   </div>
   <button class="btn wide" id="ob-go" disabled>Начать 30 дней</button>
+  ${cloudAllowed()?`<button class="btn ghost wide" id="ob-cloud" style="margin-top:10px">У меня уже есть аккаунт — войти</button>`:''}
   <div style="height:20px"></div></div>`;
   const prepTxt=()=>{const s=$('#ob-start').value||iso(new Date());const m=mondayFrom(s);const N=Math.round((parseISO(m)-parseISO(s))/864e5);
     $('#ob-prep').innerHTML=N?`Сначала <b>${N} ${N===1?'день':N<5?'дня':'дней'} подготовки</b>: установки, вода, шаги, подготовка дома — без голодания. <b>День 1 — понедельник, ${fmtDate(parseISO(m))}</b>. Так пятничная разгрузка всегда придётся на пятницу.`:'День 1 начинается сразу — это понедельник.'};
   prepTxt();$('#ob-start').onchange=prepTxt;
+  const oc=$('#ob-cloud');if(oc)oc.onclick=()=>{$('#app').innerHTML=`<div class="ob">${logo(56)}<h1>Вход</h1><div class="muted" style="margin-bottom:14px">После входа данные загрузятся из облака.</div>${renderCloud()}<button class="back" id="ob-back">‹ Назад к анкете</button></div>`;bindCloud();$('#ob-back').onclick=render};
   $('#ob-ok').onclick=()=>{$('#ob-ok').classList.toggle('on');$('#ob-go').disabled=!$('#ob-ok').classList.contains('on')};
   $('#ob-go').onclick=()=>{
     const st=$('#ob-start').value||iso(new Date());
@@ -718,6 +720,61 @@ function bindRem(){
   $('#ics').onclick=exportIcs;
 }
 
+/* ---------- ОБЛАКО (Firebase) ---------- */
+const FB_VER='10.14.1',FB_CFG={apiKey:"AIzaSyBdU4NgwPRomywCDJ4rikQY7hyGt-AoOok",authDomain:"gipno-stroynost.firebaseapp.com",projectId:"gipno-stroynost",storageBucket:"gipno-stroynost.firebasestorage.app",messagingSenderId:"247490589201",appId:"1:247490589201:web:d85b183df529a0744d37b0"};
+const CL={ok:false,user:null,busy:false,msg:'',err:false,pushT:null,loading:null};
+const cloudAllowed=()=>!inFrame()&&/^https:/.test(location.protocol);
+function fbLoad(){if(CL.loading)return CL.loading;CL.loading=(async()=>{for(const m of ['app','auth','firestore']){if(m==='app'&&window.firebase)continue;
+  await new Promise((ok,no)=>{const sc=document.createElement('script');sc.src=`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-${m}-compat.js`;sc.onload=ok;sc.onerror=()=>no(new Error('net'));document.head.appendChild(sc)})}
+  if(!firebase.apps.length)firebase.initializeApp(FB_CFG);CL.auth=firebase.auth();CL.db=firebase.firestore();CL.ok=true})();CL.loading.catch(()=>{CL.loading=null});return CL.loading}
+const cDoc=()=>CL.db.collection('users').doc(CL.user.uid).collection('data').doc('main');
+function strip(o){const c=JSON.parse(JSON.stringify(o));delete c._sync;return c}
+function deepMerge(a,b){ // b (телефон) поверх a (облако); массивы SOS — объединение
+  if(Array.isArray(a)&&Array.isArray(b)){const m=new Map();a.concat(b).forEach(x=>m.set(x&&x.ts?x.ts:JSON.stringify(x),x));return [...m.values()]}
+  if(a&&b&&typeof a==='object'&&typeof b==='object'&&!Array.isArray(a)&&!Array.isArray(b)){const r={...a};for(const k in b)r[k]=k in a?deepMerge(a[k],b[k]):b[k];return r}
+  return b===undefined||b===null||b===''?a:b}
+async function cloudPush(){if(!CL.user||!navigator.onLine)return;try{const now=Date.now();await cDoc().set({state:JSON.stringify(strip(S)),updated:now,v:1});S._sync=now;S._upd=Math.min(S._upd||now,now);save(true);CL.msg='Сохранено в облаке '+new Date(now).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});CL.err=false}catch(e){CL.msg='Не удалось сохранить в облако — повторим позже';CL.err=true}refreshCloudUI()}
+function cloudPushSoon(){if(!CL.user)return;clearTimeout(CL.pushT);CL.pushT=setTimeout(cloudPush,2500)}
+async function cloudPull(first){if(!CL.user||!navigator.onLine)return;let d;try{d=await cDoc().get()}catch(e){CL.msg='Нет связи с облаком';CL.err=true;refreshCloudUI();return}
+  if(!d.exists){await cloudPush();return}
+  const c=d.data(),cs=JSON.parse(c.state||'{}'),localChanged=(S._upd||0)>(S._sync||0),cloudNewer=c.updated>(S._sync||0);
+  if(!S.profile){S=Object.assign({days:{},weeks:{},final:{}},cs);S._sync=c.updated;S._upd=c.updated;save(true);toast('Данные загружены из облака');render();return}
+  if(cloudNewer&&!localChanged){S=Object.assign({days:{},weeks:{},final:{}},cs);S._sync=c.updated;S._upd=c.updated;save(true);render();return}
+  if(cloudNewer&&localChanged){if(first){const ch=await ask('В облаке и в этом телефоне разные данные. Объединить их? (рекомендуется)',{ok:'Объединить',cancel:'Другое'});
+      if(ch){S=deepMerge(cs,strip(S))}else{const tc=await ask('Чьи данные оставить?',{ok:'Из облака',cancel:'Из телефона'});if(tc)S=Object.assign({days:{},weeks:{},final:{}},cs)}}
+    else S=deepMerge(cs,strip(S));
+    save(true);await cloudPush();render();return}
+  if(localChanged)await cloudPush();}
+async function cloudStart(){if(!cloudAllowed())return;try{await fbLoad()}catch(e){return}
+  try{await CL.auth.getRedirectResult()}catch(e){CL.msg=fbErrText(e);CL.err=true}
+  CL.auth.onAuthStateChanged(async u=>{CL.user=u||null;refreshCloudUI();if(u){await cloudPull(true);refreshCloudUI()}});
+  addEventListener('online',()=>{if(CL.user)cloudPull()});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&CL.user)cloudPull()});}
+function fbErrText(e){const c=(e&&e.code)||'';return ({'auth/invalid-email':'Неверный формат почты','auth/user-not-found':'Такой почты нет — зарегистрируйтесь','auth/wrong-password':'Неверный пароль','auth/invalid-credential':'Неверная почта или пароль','auth/email-already-in-use':'Эта почта уже зарегистрирована — войдите','auth/weak-password':'Пароль минимум 6 символов','auth/network-request-failed':'Нет интернета','auth/too-many-requests':'Слишком много попыток, подождите','auth/popup-closed-by-user':'Окно входа закрыто'})[c]||('Ошибка: '+(c||e.message||e))}
+async function fbDo(fn){CL.busy=true;CL.msg='';refreshCloudUI();try{await fbLoad();await fn()}catch(e){CL.msg=fbErrText(e);CL.err=true}CL.busy=false;refreshCloudUI()}
+function renderCloud(){
+  if(!cloudAllowed())return `<div class="card"><h3>Облако</h3><div class="small muted">Вход и облако работают в GitHub-версии приложения: e87779282244-max.github.io/gipno-stroynost</div></div>`;
+  const m=CL.msg?`<div class="tiny" style="margin-top:8px;color:${CL.err?'#b33':'var(--good)'}">${esc(CL.msg)}</div>`:'';
+  if(CL.user)return `<div class="card" id="cloud"><h3>Облако <span class="r" style="color:var(--good)">● подключено</span></h3><div class="small">${esc(CL.user.email||'аккаунт Google')}</div><div class="tiny muted" style="margin-top:4px">Данные сохраняются автоматически и появятся на любом устройстве после входа.</div>${m}
+    <div class="row" style="margin-top:10px"><button class="btn ghost sm" id="c-sync">Синхронизировать</button><button class="btn ghost sm" id="c-out">Выйти</button></div></div>`;
+  return `<div class="card" id="cloud"><h3>Облако</h3><div class="small muted" style="margin-bottom:10px;line-height:1.4">Войдите, чтобы данные не потерялись при смене телефона. Текущие отметки сохранятся.</div>
+    <button class="btn wide" id="c-google" ${CL.busy?'disabled':''}>Войти через Google</button>
+    <div class="tiny muted" style="text-align:center;margin:10px 0">или по почте</div>
+    <div class="field"><input id="c-mail" type="email" autocomplete="email" placeholder="Почта"></div>
+    <div class="field"><input id="c-pass" type="password" autocomplete="current-password" placeholder="Пароль (мин. 6 символов)"></div>
+    <div class="row"><button class="btn sm" id="c-in" ${CL.busy?'disabled':''}>Войти</button><button class="btn ghost sm" id="c-reg" ${CL.busy?'disabled':''}>Регистрация</button><button class="btn ghost sm" id="c-fg" style="margin-left:auto">Забыл пароль</button></div>${m}</div>`}
+function bindCloud(){
+  const g=$('#c-google');if(g)g.onclick=()=>fbDo(async()=>{const pr=new firebase.auth.GoogleAuthProvider();const standalone=navigator.standalone||matchMedia('(display-mode: standalone)').matches;
+    if(standalone){await CL.auth.signInWithRedirect(pr);return}try{await CL.auth.signInWithPopup(pr)}catch(e){if(e&&/popup-blocked|operation-not-supported/.test(e.code||''))await CL.auth.signInWithRedirect(pr);else throw e}});
+  const cred=()=>[($('#c-mail')||{}).value.trim(),($('#c-pass')||{}).value];
+  const i=$('#c-in');if(i)i.onclick=()=>{const [m,p]=cred();fbDo(()=>CL.auth.signInWithEmailAndPassword(m,p))};
+  const r=$('#c-reg');if(r)r.onclick=()=>{const [m,p]=cred();fbDo(()=>CL.auth.createUserWithEmailAndPassword(m,p))};
+  const f=$('#c-fg');if(f)f.onclick=()=>{const [m]=cred();if(!m){CL.msg='Введите почту — пришлём ссылку для нового пароля';CL.err=true;refreshCloudUI();return}fbDo(async()=>{await CL.auth.sendPasswordResetEmail(m);CL.msg='Письмо отправлено на '+m+' (проверьте «Спам»)';CL.err=false})};
+  const s=$('#c-sync');if(s)s.onclick=()=>fbDo(()=>cloudPull());
+  const o=$('#c-out');if(o)o.onclick=async()=>{if(!await ask('Выйти из аккаунта? Данные останутся и в телефоне, и в облаке.',{ok:'Выйти'}))return;await CL.auth.signOut();CL.msg='';render()};
+}
+function refreshCloudUI(){const c=$('#cloud');if(!c)return;const w=document.createElement('div');w.innerHTML=renderCloud();c.replaceWith(w.firstElementChild);bindCloud()}
+
 /* ---------- ПРОФИЛЬ ---------- */
 function renderMe(){const p=S.profile;
   return `<div class="card"><h3>Профиль</h3>
@@ -727,14 +784,16 @@ function renderMe(){const p=S.profile;
     <div class="field"><label>Стартовый вес</label><input data-p="w0" inputmode="decimal" value="${esc(p.w0)}"></div>
     <div class="field"><label>Стартовая талия</label><input data-p="waist0" inputmode="decimal" value="${esc(p.waist0)}"></div></div>
     <div class="field"><label>Моя цель на 30 дней</label><textarea data-p="goal">${esc(p.goal)}</textarea></div></div>
+  ${renderCloud()}
   ${renderRem()}
   <div class="card"><h3>Данные</h3><div class="small muted" style="margin-bottom:10px">Всё хранится в этом телефоне. Сохраните резервную копию перед сменой устройства.</div>
     <div class="row"><button class="btn ghost sm" id="exp">Сохранить копию</button><button class="btn ghost sm" id="imp">Загрузить копию</button></div>
     <input type="file" id="impf" accept=".json,application/json" hidden>
     ${S.fastScr?`<button class="btn ghost sm" id="refast" style="margin-top:14px;display:block">Пройти заново анкету длительной паузы</button>`:''}
     <button class="btn ghost sm" id="reset" style="margin-top:14px;color:#b33">Начать программу заново</button></div>
-  <div class="tiny muted" style="text-align:center;padding:10px">Гипно-стройность • v0.6</div>`}
+  <div class="tiny muted" style="text-align:center;padding:10px">Гипно-стройность • v0.7</div>`}
 function bindMe(){
+  bindCloud();
   const rf=$('#refast');if(rf)rf.onclick=()=>{delete S.fastScr;save();toast('Анкета сброшена — она откроется в пятницу');rerender()};
   bindRem();
   document.querySelectorAll('[data-p]').forEach(el=>el.onchange=()=>{let v=el.value.trim();if(el.dataset.p==='start'&&v){const m=mondayFrom(v);if(m!==v){toast('День 1 — понедельник, '+fmtDate(parseISO(m)));}S.profile.prep=v<iso(new Date())?S.profile.prep:v;v=m}S.profile[el.dataset.p]=v;save();if(el.dataset.p==='start')rerender();else toast('Сохранено')});
@@ -773,6 +832,7 @@ function render(){
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{VIEW.tab=t.dataset.t;VIEW.day=null;VIEW.art=null;VIEW.week=null;render();scrollTo(0,0)});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.profile&&VIEW.tab==='today')rerender()});
 render();
+cloudStart();
 if('serviceWorker' in navigator&&location.protocol==='https:'&&!inFrame()){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 </script>
 </body>

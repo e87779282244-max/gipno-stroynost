@@ -194,18 +194,18 @@ const WD=['вс','пн','вт','ср','чт','пт','сб'];
 function fmtDate(d){return d.toLocaleDateString('ru-RU',{day:'numeric',month:'long'})}
 function D(n){return S.days[n]||(S.days[n]={})}
 function PD(){S.prep=S.prep||{tasks:{},days:{}};const k=iso(new Date());return S.prep.days[k]||(S.prep.days[k]={})}
-function X(n){return n>0?D(n):PD()}
+function X(n){if(n<0){S.mdays=S.mdays||{};return S.mdays[-n]||(S.mdays[-n]={})}return n>0?D(n):PD()}
 function mondayFrom(s){const d=parseISO(s);const w=d.getDay();if(w!==1)d.setDate(d.getDate()+((8-w)%7||7));return iso(d)}
 function prepInfo(){const p=S.profile;if(!p.prep||p.prep>=p.start)return null;const a=parseISO(p.prep),b=parseISO(p.start),t=new Date();t.setHours(0,0,0,0);
   const N=Math.round((b-a)/864e5),k=Math.floor((t-a)/864e5)+1;return {N,k,active:k>=1&&k<=N}}
 function fmtDur(ms){if(ms<0)ms=0;const m=Math.floor(ms/6e4);return Math.floor(m/60)+' ч '+String(m%60).padStart(2,'0')+' мин'}
 function num(v){const x=parseFloat(String(v??'').replace(',','.'));return isNaN(x)?null:x}
-function waterNorm(n){const p=S.profile||{},x=n>0?(S.days[n]||{}):{};
-  let w=null;for(let i=Math.max(1,n);i>=1;i--){const v=num((S.days[i]||{}).weight);if(v){w=v;break}}w=w||num(p.w0);const h=num(p.height),sex=p.sex;
+function waterNorm(n){const p=S.profile||{},x=n>0?(S.days[n]||{}):n<0?((S.mdays||{})[-n]||{}):{};
+  let w=null;if(n<0)w=maintLastWeight(-n);for(let i=n<0?30:Math.max(1,n);!w&&i>=1;i--){const v=num((S.days[i]||{}).weight);if(v){w=v;break}}w=w||num(p.w0);const h=num(p.height),sex=p.sex;
   if(!w||!sex)return null;const k=sex==='f'?31:35;let ref=w,why='';
   if(h&&w/((h/100)**2)>=25&&h-100<w){ref=h-100;why=' (при лишнем весе — от идеального: рост − 100)'}
   const parts=[[k+' мл × '+f1(ref)+' кг'+why,ref*k]];
-  const dd=n>0?DAYS[n-1]:null;const trained=n>0&&(((x.train||'').length>0)||(x.chk||{}).z2||(dd&&dd.ex.length&&dd.ex.every(e=>((x.sets||{})[e.k]||[]).filter(Boolean).length>=e.s)));
+  const dd=n>0?DAYS[n-1]:null;const trained=n!==0&&(((x.train||'').length>0)||(x.chk||{}).z2||(x.chk||{}).str||(dd&&dd.ex.length&&dd.ex.every(e=>((x.sets||{})[e.k]||[]).filter(Boolean).length>=e.s)));
   if(trained)parts.push(['тренировка сегодня',500]);
   const ml=Math.round(parts.reduce((a,q)=>a+q[1],0)/50)*50;return {ml,parts}}
 function glassMl(){return +(S.profile&&S.profile.glass)||250}
@@ -457,7 +457,7 @@ const LADDER={24:{n:'24 ч',how:'Ужин в четверг → ужин в пя
   36:{n:'36 ч',how:'Ужин в четверг (до 18:00) → завтрак в субботу (около 6:00–8:00).',out:'Субботу откройте спокойным завтраком: яйца или рыба + овощи, без компенсации.'},
   48:{n:'42–48 ч',how:'Последний приём в четверг около 16:00–18:00 → суббота 12:00 (≈42 ч) или 16:00–18:00 (48 ч).',out:'Субботу откройте обычным приёмом: белок + овощи, без компенсации.'}};
 const WEEKCAP={1:0,2:24,3:36,4:48,5:48};
-function fastGoalH(n){const s=S.fastScr;if(!s||!s.ok)return 0;return Math.min(WEEKCAP[DAYS[n-1].w]||48,s.level||24)}
+function fastGoalH(n){const s=S.fastScr;if(!s||!s.ok)return 0;if(n<0)return s.level||24;return Math.min(WEEKCAP[DAYS[n-1].w]||48,s.level||24)}
 function fastGoal(n){const g=fastGoalH(n);return g?LADDER[g].n:'—'}
 function fastBlock(n){
   const f=S.fast,g=fastGoalH(n)||24,L=LADDER[g];
@@ -515,7 +515,7 @@ function bindDay(n){
     if(v==='good'){const nx={24:36,36:48,48:48}[S.fast.goal||24];const up=nx>(S.fastScr.level||24);S.fastScr.level=nx;toast(up?'Следующая ступень: '+LADDER[nx].n:'Отлично!')}save();rerender()});
   const fe=$('#fast-end');if(fe)fe.onclick=async()=>{if(!await ask('Завершить длительную паузу?'))return;S.fast.end=Date.now();save();rerender()};
   // планка
-  const pg=$('#plank-go'),ps=$('#plank-save'),pt=$('#plank-t');let t0=0,el=0;const target=n>0?DAYS[n-1].plank:20;
+  const pg=$('#plank-go'),ps=$('#plank-save'),pt=$('#plank-t');let t0=0,el=0;const target=n>0?DAYS[n-1].plank:n<0?maintPlank():20;
   if(pg)pg.onclick=()=>{
     if(plankT){clearInterval(plankT);plankT=null;pg.textContent='Старт';ps.hidden=el===0;pt.style.color='';return}
     audioInit();pg.textContent='Стоп';ps.hidden=true;el=0;let cd=3,buzzed=false,lastTick=-1;
@@ -533,14 +533,14 @@ function bindDay(n){
   document.querySelectorAll('[data-go]').forEach(el=>el.onclick=()=>{const [tab,art]=el.dataset.go.split(':');VIEW.tab=tab;VIEW.art=art||null;render();scrollTo(0,0)});
   document.querySelectorAll('[data-pw]').forEach(el=>el.onchange=()=>{S.profile[el.dataset.pw]=el.value.trim();save()});
   bindPhotos();
-  if(n>0)startTick(n);
+  if(n!==0)startTick(n);
 }
 function startTick(n){
   clearInterval(tick);
   const upd=()=>{
     const ft=$('#fast-timer');
     if(ft){const [h,m]=S.profile.wake.split(':').map(Number);const w=new Date();w.setHours(h,m,0,0);const ms=Date.now()-w;ft.textContent=fmtDur(ms);
-      const tt=targetTime(DAYS[n-1]);const fl=$('#fast-left');
+      const tt=n>0?targetTime(DAYS[n-1]):maintWin();const fl=$('#fast-left');
       if(tt&&fl){const [a,b]=tt.split(':').map(Number);const t=new Date();t.setHours(a,b,0,0);const left=t-Date.now();fl.textContent=left>0?'До ориентира '+tt+': '+fmtDur(left):'Ориентир '+tt+' достигнут — можно открывать окно'}}
     const lt=$('#long-timer');if(lt&&S.fast&&!S.fast.end){const ms=Date.now()-S.fast.start,G=(S.fast.goal||24)*36e5;const sec=Math.floor(ms/1000)%60;lt.textContent=fmtDur(ms)+' '+String(sec).padStart(2,'0')+' с';
       const b=$('#long-bar');if(b)b.style.width=Math.min(100,ms/G*100)+'%';const l=$('#long-left');if(l)l.textContent=ms<G?'До цели: '+fmtDur(G-ms):'Цель достигнута! Можно выходить из паузы.';}
@@ -549,9 +549,97 @@ function startTick(n){
 }
 function rerender(keepScroll){const y=window.scrollY;render();window.scrollTo(0,y)}
 
+/* ---------- ПОДДЕРЖКА 90 ДНЕЙ ---------- */
+const MAINT_Q=["Результат — это не финиш, а новая точка отсчёта. Я сохраняю то, что построил(а).","Мои правила работают, когда я их повторяю. Сегодня я просто повторяю.","Я ем, когда выбираю есть. Это уже моя привычка, а не усилие.","Праздник — это люди и время, а не повод переесть. Я сам(а) решаю, сколько мне нужно.","Если день не получился, я возвращаюсь к своим правилам со следующего приёма пищи. Без наказаний и компенсаций.","Я замечаю голод и сытость. Тело подсказывает, а я слушаю.","Движение — часть моего дня, как чистка зубов. Шаги не обсуждаются.","Весы — это компас, а не судья. Я смотрю на среднее за неделю и спокойно корректирую курс.","Мне не нужна идеальная неделя. Мне нужна хорошая неделя, повторённая много раз.","Сладкое — осознанный выбор, а не автоматическая реакция. Я решаю, когда и сколько.","Я горжусь тем, что сделал(а), и берегу это каждый день.","Стройность — это не диета, а мой образ жизни."];
+const MAINT_RULES=['Пищевое окно 8–10 ч: обычно 1–2 приёма, первый около 12:00–14:00, последний — за 1,5–2 ч до сна.','Основа тарелки — белок и овощи. Сладкое — после еды, а не отдельным приёмом.','Шаги от 10 000 в день, 2–3 силовые тренировки в неделю, лёгкое кардио — по желанию.','Пятница — по желанию: разгрузочный день или пауза на вашей ступени.','Смотрим на средний вес за неделю. Если он выше базового на 1,5 кг и больше — перезагрузка 7 дней.','Раз в неделю — итоги: талия и пять ваших правил.'];
+const MCORR=1.5;
+function maintDay(){return curDay()-30}
+function maintBase(){if(S.maint&&S.maint.base)return S.maint.base;const a=[];for(let i=24;i<=30;i++){const v=num((S.days[i]||{}).weight);if(v)a.push(v)}if(!a.length)for(let i=30;i>=1&&a.length<3;i--){const v=num((S.days[i]||{}).weight);if(v)a.push(v)}return a.length?Math.round(avg(a)*10)/10:null}
+function maintLastWeight(m){for(let i=m;i>=1;i--){const v=num(((S.mdays||{})[i]||{}).weight);if(v)return v}return null}
+function maintWeekAvg(m){const a=[];for(let i=Math.max(1,m-6);i<=m;i++){const v=num(((S.mdays||{})[i]||{}).weight);if(v)a.push(v)}return a.length?avg(a):null}
+function maintWin(){return (S.profile&&S.profile.mwin)||'13:00'}
+function maintPlank(){const b=Math.max(0,...Object.values(S.days).map(d=>num(d.plank)||0));return Math.max(60,Math.min(b||120,180))}
+function maintStepsAvg(){const s=weekStats(4).steps;return s?Math.round(s/500)*500:null}
+function maintReset(m){const r=S.maint&&S.maint.reset;return r&&m>=r.from&&m<r.from+7?m-r.from+1:0}
+function maintRules(){const F=S.final||{};const r=[0,1,2,3,4].map(i=>F['rule'+i]).filter(Boolean);return r.length?r:null}
+function renderMaint(M){
+  S.maint=S.maint||{};if(!S.maint.base&&maintBase())S.maint.base=maintBase();
+  const x=X(-M),date=dateOf(30+M),base=S.maint.base,wavg=maintWeekAvg(M),rs=maintReset(M),rules=maintRules();
+  const over=base&&wavg&&wavg-base>=MCORR;const isFri=date.getDay()===5;
+  const name=S.profile.name?esc(S.profile.name)+', ':'';
+  let h=`<div class="card hero"><div class="row between"><div class="dn">Поддержка • ${WD[date.getDay()]}, ${fmtDate(date)}</div></div>
+    <div class="big">День ${Math.min(M,90)}<span style="opacity:.5;font-size:20px"> / 90</span></div>
+    <div class="q">${rules?'Правило дня: «'+esc(rules[(M-1)%rules.length])+'»':'«'+esc(MAINT_Q[(M-1)%MAINT_Q.length])+'»'}</div>
+    <div class="bar"><i style="width:${Math.min(100,M/90*100)}%"></i></div>
+    <div class="tiny" style="margin-top:6px;opacity:.8">${M>90?name+'90 дней поддержки пройдены — режим остаётся с вами.':name+'сохраняем результат 30 дней.'}</div></div>`;
+  if(!(S.final||{}).done)h+=`<div class="card" style="border-color:var(--accent)"><b>Подведите итог 30 дней</b><div class="small muted" style="margin:4px 0 10px">Пять правил из итога станут «правилом дня» в поддержке.</div><button class="btn sm" id="go-final">Подвести итог</button></div>`;
+  // контроль веса
+  h+=`<div class="card"><h3>Контроль веса <span class="r">коридор +${String(MCORR).replace('.',',')} кг</span></h3>
+    <div class="grid3"><div class="stat"><b>${base?f1(base):'—'}</b><span>базовый вес</span></div><div class="stat"><b>${wavg?f1(wavg):'—'}</b><span>среднее за 7 дней</span></div><div class="stat"><b style="color:${over?'var(--warn)':'var(--good)'}">${base&&wavg?(wavg-base>0?'+':'')+f1(wavg-base):'—'}</b><span>от базы</span></div></div>
+    ${rs?`<div class="note" style="background:var(--accent-weak);color:var(--accent-ink)"><b>Перезагрузка: день ${rs} из 7.</b> Правила 2-й недели: первый приём 14:00–16:00, шаги 11–12 тыс., без сладкого, в пятницу — разгрузочный день.</div>`:
+      over?`<div class="note"><b>Средний вес вышел за коридор.</b> Это нормальный сигнал, а не провал: 7 дней по правилам 2-й недели обычно возвращают вес в коридор.<button class="btn sm" id="m-reset" style="margin-top:8px;display:block">Начать перезагрузку 7 дней</button></div>`:
+      `<div class="tiny muted" style="margin-top:8px">Базовый вес — среднее за последнюю неделю программы. ${base?'':'Впишите вес вечером — база посчитается автоматически.'}</div>`}
+  </div>`;
+  h+=`<div class="card mind"><h3>Установка дня</h3><div class="txt">${esc(MAINT_Q[(M-1)%MAINT_Q.length])}</div>${chk(-M,'morning','Прочитал(а) установку')}</div>`;
+  // окно
+  const win=rs?'14:00':maintWin();
+  h+=`<div class="card"><h3>Пищевое окно <span class="r">ориентир ${win}</span></h3>`;
+  if(x.mealTime)h+=`<div class="row between"><div><div class="tiny muted">Окно открыто в</div><div class="timer">${esc(x.mealTime)}</div></div><span class="pill good">✓</span></div><button class="btn ghost sm" id="meal-undo" style="margin-top:10px">Изменить</button>`;
+  else if(M===maintDay())h+=`<div class="tiny muted">Без еды с подъёма (${esc(S.profile.wake)})</div><div class="timer" id="fast-timer">—</div><div class="tiny muted" id="fast-left" style="margin-bottom:10px"></div><button class="btn good wide" id="meal-open">Открываю пищевое окно</button>`;
+  else h+=`<div class="field" style="margin:0"><label>Время первого приёма</label><input type="time" id="meal-manual"></div>`;
+  h+=`<div class="tiny muted" style="margin-top:10px;line-height:1.4">1–2 приёма: белок + овощи. Последний — за 1,5–2 ч до сна. Сладкое — после еды.</div>
+    <div style="margin-top:12px"><div class="tiny muted" style="font-weight:600">Голод перед едой (1–10)</div>${scaleBlock('hb',x.hb)}</div>
+    <div style="margin-top:10px"><div class="tiny muted" style="font-weight:600">Сытость после еды (1–10)</div>${scaleBlock('sa',x.sa)}</div>
+    ${chk(-M,'supp','Добавки с едой — по вашему выбору')}</div>`;
+  if(isFri){const fm=x.friMode;h+=`<div class="card"><h3>Пятница • по желанию</h3><div class="opt">
+      <button data-fri="unload" class="${fm==='unload'?'on':''}">Разгрузочный день<small>кефир, салаты, бульон или белковый</small></button>
+      <button data-fri="fast" class="${fm==='fast'?'on':''}">Длительная пауза<small>${S.fastScr&&S.fastScr.ok?'ваша ступень: '+LADDER[fastGoalH(-M)].n:'ступени 24 → 36 → 48 ч'}</small></button></div>
+      ${fm==='unload'?`<p class="small" style="margin:12px 0 0;line-height:1.45">Выберите любой из четырёх разгрузочных дней программы — какой лучше переносите.</p>`:''}${fm==='fast'?fastBlock(-M):''}</div>`}
+  const sa=maintStepsAvg();
+  h+=`<div class="card"><h3>Движение</h3>
+    ${chk(-M,'stepsChk','Шаги: от '+(rs?'11 000–12 000':'10 000'),sa?'на 4-й неделе вы ходили в среднем '+sa.toLocaleString('ru-RU'):'впишите итог вечером',num(x.steps)!==null&&num(x.steps)>=(rs?11000:10000))}
+    <div class="ex"><img src="${EXINFO.plank.img}" alt=""><div style="flex:1"><div style="font-weight:700">Планка ≈${maintPlank()} с</div><div class="tiny muted">держим уровень${num(x.plank)!==null?' • сделано: '+num(x.plank)+' с':''}</div>
+    <div class="row" style="margin-top:8px"><div class="timer" id="plank-t" style="font-size:24px">0 с</div><button class="btn sm" id="plank-go">Старт</button><button class="btn ghost sm" id="plank-save" hidden>Записать</button></div></div></div>
+    ${chk(-M,'str','Силовая тренировка','2–3 раза в неделю: зал или домашний комплекс программы')}
+    ${chk(-M,'z2','Лёгкое кардио по желанию','20–60 мин в разговорном темпе')}</div>`;
+  h+=waterCard(-M,x);
+  h+=`<div class="card mind"><h3>Вечерний настрой <span class="r">≈5 мин</span></h3><ol style="margin:0;padding-left:20px;line-height:1.5;font-size:15px">${EVENING[3].map(s=>`<li style="margin-bottom:6px">${esc(s)}</li>`).join('')}</ol>${chk(-M,'evening','Сделал(а) вечерний настрой')}</div>`;
+  h+=`<div class="card"><h3>Заполните вечером</h3><div class="grid2">
+      <div class="field"><label>Вес, кг</label><input inputmode="decimal" data-f="weight" value="${esc(x.weight)}"></div>
+      <div class="field"><label>Шаги</label><input inputmode="numeric" data-f="steps" value="${esc(x.steps)}"></div>
+      <div class="field"><label>Планка, с</label><input inputmode="numeric" data-f="plank" value="${esc(x.plank)}"></div>
+      <div class="field"><label>Сон, ч</label><input inputmode="decimal" data-f="sleep" value="${esc(x.sleep)}"></div></div>
+    <div class="field" style="margin:0"><label>Тренировка</label><input data-f="train" value="${esc(x.train)}"></div></div>`;
+  if(M%7===0){const mw=M/7,r=(S.mweeks=S.mweeks||{})[mw]||(S.mweeks[mw]={});const rl=rules||MAINT_RULES.slice(0,5);
+    h+=`<div class="card" style="border-color:var(--accent)"><h3>Итоги недели поддержки ${mw}</h3>
+      <div class="field"><label>Талия, см${num(S.final.waist)?' (день 30: '+f1(num(S.final.waist))+')':''}</label><input inputmode="decimal" data-mw="waist" value="${esc(r.waist)}"></div>
+      <div class="tiny muted" style="font-weight:600;margin-bottom:4px">Какие правила держал(а) на этой неделе?</div>
+      ${rl.map((q,i)=>`<div class="check ${(r.rules||{})[i]?'on':''}" data-mr="${i}"><div class="box"></div><div class="lbl">${esc(q)}</div></div>`).join('')}</div>`}
+  h+=`<div class="card"><h3>Дальше</h3><div class="small muted" style="margin-bottom:10px;line-height:1.4">Хотите сбросить ещё? Можно пройти новый круг 30 дней — текущие результаты сохранятся в истории.</div><button class="btn ghost sm" id="new-cycle">Начать новый круг 30 дней</button></div>`;
+  return h;
+}
+function bindMaint(M){
+  bindDay(-M);
+  const r=$('#m-reset');if(r)r.onclick=()=>{S.maint.reset={from:M};save();toast('Перезагрузка 7 дней началась');rerender()};
+  document.querySelectorAll('[data-mw]').forEach(el=>el.onchange=()=>{S.mweeks[M/7][el.dataset.mw]=el.value.trim();save()});
+  document.querySelectorAll('[data-mr]').forEach(el=>el.onclick=()=>{const w=S.mweeks[M/7];w.rules=w.rules||{};w.rules[el.dataset.mr]=!w.rules[el.dataset.mr];save();rerender()});
+  const gf=$('#go-final');if(gf)gf.onclick=()=>{VIEW.tab='progress';VIEW.week='final';render();scrollTo(0,0)};
+  const nc=$('#new-cycle');if(nc)nc.onclick=newCycle;
+}
+async function newCycle(){
+  if(!await ask('Начать новый круг 30 дней? Текущие отметки уйдут в историю, фото и облако сохранятся. Подготовка — до ближайшего понедельника.',{ok:'Начать'}))return;
+  let lw=null;for(let i=120;i>=1&&!lw;i--)lw=num(((S.mdays||{})[i-30]||{}).weight)||(i<=30?num((S.days[i]||{}).weight):null);
+  (S.cycles=S.cycles||[]).push({start:S.profile.start,days:S.days,weeks:S.weeks,final:S.final,mdays:S.mdays||{},mweeks:S.mweeks||{},maint:S.maint||{},sos:S.sos||[]});
+  const F0=S.final||{},mw=S.mweeks||{};const lastWaist=Object.keys(mw).sort((a,b)=>b-a).map(k=>mw[k].waist).find(Boolean);
+  const today=iso(new Date());S.days={};S.weeks={};S.final={};S.mdays={};S.mweeks={};S.maint={};S.sos=[];S.fast=null;S.prep={tasks:{},days:{}};
+  S.profile.prep=today;S.profile.start=mondayFrom(today);if(lw)S.profile.w0=String(lw);MEAS.forEach(([k])=>{const v=k==='waist'?(lastWaist||F0.waist):F0[k];if(v)S.profile[k+'0']=v});
+  save();VIEW={tab:'today'};render();scrollTo(0,0);toast('Новый круг! День 1 — '+fmtDate(parseISO(S.profile.start)));
+}
+
 /* ---------- ПЛАН 30 ДНЕЙ ---------- */
 function renderPlan(){
-  const t=curDay();let h=`<div class="card"><h3>30 дней</h3><div class="daygrid">`;
+  const t=curDay();let h=t>30?`<div class="card"><h3>Поддержка • день ${Math.min(t-30,90)} из 90</h3><ul style="margin:0;padding-left:20px;line-height:1.5;font-size:14.5px">${MAINT_RULES.map(r=>`<li style="margin-bottom:4px">${esc(r)}</li>`).join('')}</ul></div>`:'';
+  h+=`<div class="card"><h3>30 дней</h3><div class="daygrid">`;
   for(let i=1;i<=30;i++){const dd=DAYS[i-1];const p=Math.round(score(i)*100);
     h+=`<div class="dcell ${i===t?'today':''} ${dd.fri?'fri':''} ${i>t?'future':''}" data-day="${i}">${i}<small>${WD[dateOf(i).getDay()]}</small><div class="ring"><i style="width:${p}%"></i></div></div>`}
   h+=`</div><div class="tiny muted" style="margin-top:10px">Сиреневые — пятничные разгрузки. Если день не получился, программа продолжается, а не начинается заново.</div></div>`;
@@ -571,10 +659,12 @@ function series(f){const a=[];for(let i=1;i<=30;i++){const v=num((S.days[i]||{})
 function lineChart(pts,opt={}){
   if(pts.length<1)return `<div class="tiny muted">Пока нет данных — заполняйте вечерний трекер.</div>`;
   const W=320,H=150,p=26;const ys=pts.map(q=>q[1]);let mn=Math.min(...ys),mx=Math.max(...ys);if(mx-mn<1){mn-=1;mx+=1}
-  const X=d=>p+(d-1)*(W-p-8)/29,Y=v=>H-18-(v-mn)*(H-30)/(mx-mn);
+  const MX=opt.max||30;if(opt.base!=null){mn=Math.min(mn,opt.base-.5);mx=Math.max(mx,opt.base+(opt.corr||0)+.5)}
+  const X=d=>p+(d-1)*(W-p-8)/(MX-1),Y=v=>H-18-(v-mn)*(H-30)/(mx-mn);
   let s=`<svg viewBox="0 0 ${W} ${H}">`;
   [mn,(mn+mx)/2,mx].forEach(v=>{s+=`<line x1="${p}" x2="${W-6}" y1="${Y(v)}" y2="${Y(v)}" stroke="#e0d8ec"/><text x="2" y="${Y(v)+4}" font-size="10" fill="#a39cb6">${Math.round(v*10)/10}</text>`});
-  [1,7,14,21,28].forEach(d=>s+=`<text x="${X(d)}" y="${H-3}" font-size="10" fill="#a39cb6" text-anchor="middle">${d}</text>`);
+  if(opt.base!=null){s+=`<line x1="${p}" x2="${W-6}" y1="${Y(opt.base)}" y2="${Y(opt.base)}" stroke="#2f8a6a" stroke-dasharray="4 3"/><line x1="${p}" x2="${W-6}" y1="${Y(opt.base+opt.corr)}" y2="${Y(opt.base+opt.corr)}" stroke="#b4672a" stroke-dasharray="4 3"/>`}
+  (MX>30?[1,15,30,45,60,75,90]:[1,7,14,21,28]).forEach(d=>s+=`<text x="${X(d)}" y="${H-3}" font-size="10" fill="#a39cb6" text-anchor="middle">${d}</text>`);
   if(opt.bars){pts.forEach(([d,v])=>{const y=Y(v);s+=`<rect x="${X(d)-3.5}" y="${y}" width="7" height="${H-18-y}" rx="2" fill="#8f73d1"/>`});
     if(opt.goal)opt.goal.forEach(([a,b,v])=>{if(v>=mn&&v<=mx)s+=`<line x1="${X(a)-4}" x2="${X(b)+4}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2f8a6a" stroke-width="2" stroke-dasharray="4 3"/>`})}
   else{s+=`<polyline fill="none" stroke="#8f73d1" stroke-width="2" points="${pts.map(([d,v])=>X(d)+','+Y(v)).join(' ')}"/>`;pts.forEach(([d,v])=>s+=`<circle cx="${X(d)}" cy="${Y(v)}" r="3" fill="#5b3f9c"/>`);
@@ -609,6 +699,8 @@ function renderProgress(){
     <div class="stat"><b style="font-size:14px;line-height:1.2;padding:4px 0">${top?TRIG[top[0]].n:'—'}</b><span>частая причина</span></div></div>
     <div class="tiny muted" style="margin:12px 0 4px;font-weight:600">Голод перед первым приёмом, среднее по неделям</div>
     <div class="grid3" style="grid-template-columns:repeat(4,1fr)">${hbw.map((v,i)=>`<div class="stat"><b>${f1(v)}</b><span>нед. ${i+1}</span></div>`).join('')}</div></div>`;
+  if(S.mdays&&Object.keys(S.mdays).length){const mp=[];for(let i=1;i<=90;i++){const v=num((S.mdays[i]||{}).weight);if(v)mp.push([i,v])}const b=S.maint&&S.maint.base;
+    h+=`<div class="card chart"><h3>Вес в поддержке <span class="r">зелёная — база, оранжевая — коридор</span></h3>${lineChart(mp,{max:90,base:b||undefined,corr:MCORR})}</div>`}
   h+=`<div class="card"><h3>Фото прогресса <span class="r">спереди и сбоку</span></h3>${photoGrid(['start','d15','d30'])}${photoCompareBtn()}</div>`;
   h+=measCard();
   h+=`<div class="card chart"><h3>Вес <span class="r">зелёным — среднее недели</span></h3>${lineChart(wpts,{avg:ws})}</div>`;
@@ -676,6 +768,11 @@ function bindProgress(){
 
 /* ---------- СПРАВОЧНИК ---------- */
 const EXTRA=[
+ {id:'maint',cat:'ПОДДЕРЖКА',title:'Поддержка 90 дней: как сохранить результат',blocks:[
+  {h:'ЗАЧЕМ ПОДДЕРЖКА',t:'Первые месяцы после программы — самое уязвимое время: тело и привычки ещё стремятся вернуться к старому. Поддержка — облегчённый режим, который закрепляет новые привычки без жёстких рамок.'},
+  {h:'ПРАВИЛА ПОДДЕРЖКИ',t:'• '+MAINT_RULES.join(' • ')},
+  {h:'КОРИДОР ВЕСА',t:'Базовый вес — среднее за последнюю неделю программы. Колебания на 0,5–1 кг за день нормальны (вода, соль, цикл), поэтому смотрим на среднее за 7 дней. Если среднее выше базы на 1,5 кг и больше — 7 дней перезагрузки по правилам 2-й недели.'},
+  {h:'НОВЫЙ КРУГ',t:'Если хотите сбросить ещё, после поддержки или вместо неё можно пройти новый круг 30 дней. Прошлые результаты сохраняются в истории.'}]},
  {id:'zone2',cat:'ДВИЖЕНИЕ',title:'Лёгкое кардио и тренировки',blocks:[
   {h:'ЧТО ТАКОЕ ЛЁГКОЕ КАРДИО',t:'Лёгкое кардио (в спорте его называют «Zone 2») — спокойная аэробная работа низкой или умеренной интенсивности. Дыхание становится чаще, но остаётся контролируемым: вы можете говорить полными предложениями без выраженной одышки. Подойдут быстрая ходьба, дорожка с небольшим наклоном, велосипед, эллипс или очень лёгкий бег.'},
   {h:'КАК ПОНЯТЬ, ЧТО ТЕМП ПРАВИЛЬНЫЙ',t:'Главный ориентир — разговорный тест: темп ощутимый, но устойчивый, без работы «на пределе». Пульс индивидуален, поэтому не привязываемся к одной цифре для всех. Можно ориентироваться на самочувствие и данные своего трекера.'},
@@ -689,7 +786,7 @@ const EXTRA=[
 ];
 function libList(){
   const all=SECS.map((s,i)=>{const o={...s,id:'s'+i};if(s.title.startsWith('Пятница'))o.blocks=s.blocks.concat([{h:'СТУПЕНИ ДЛИТЕЛЬНОЙ ПАУЗЫ',t:'В приложении длительная пауза открывается по ступеням: 1-я неделя — только разгрузочный день; 2-я — до 24 ч; 3-я — до 36 ч; 4-я — 42–48 ч. Следующая ступень открывается, только если предыдущая прошла хорошо. Перед первой паузой — короткая анкета безопасности.'}]);return o}).concat(EXTRA);
-  const order=['ВВЕДЕНИЕ','СИСТЕМА','ИГ / ПРОТОКОЛ','РАЗГРУЗОЧНЫЕ ДНИ','ПИТАНИЕ','ДВИЖЕНИЕ','ТРЕНИРОВКИ','ДОБАВКИ','ВОССТАНОВЛЕНИЕ'];
+  const order=['ВВЕДЕНИЕ','СИСТЕМА','ИГ / ПРОТОКОЛ','РАЗГРУЗОЧНЫЕ ДНИ','ПИТАНИЕ','ДВИЖЕНИЕ','ТРЕНИРОВКИ','ДОБАВКИ','ВОССТАНОВЛЕНИЕ','ПОДДЕРЖКА'];
   return all.sort((a,b)=>order.indexOf(a.cat)-order.indexOf(b.cat));
 }
 function renderLib(){
@@ -713,10 +810,12 @@ function REM(){return S.rem=Object.assign({},REM_DEF,S.rem||{})}
 const inFrame=()=>{try{return window.self!==window.top}catch(e){return true}};
 function addMin(hm,m){const [h,mm]=hm.split(':').map(Number);const t=h*60+mm+m;return String(Math.floor(((t%1440)+1440)%1440/60)).padStart(2,'0')+':'+String(((t%60)+60)%60).padStart(2,'0')}
 function remList(){
-  const r=REM(),p=S.profile,ev=[];const first=Math.max(1,curDay());
-  const daily=(id,time,title,desc)=>{for(let n=first;n<=30;n++)ev.push({uid:id+'-'+n,n,time,title,desc})};
+  const r=REM(),p=S.profile,ev=[];const first=Math.max(1,curDay());const last=first>30?Math.min(120,first+29):30;
+  const daily=(id,time,title,desc)=>{for(let n=first;n<=last;n++)ev.push({uid:id+'-'+n,n,time,title,desc})};
   if(r.morning)daily('morning',addMin(p.wake,5),'Установка дня','Откройте Гипно-стройность и прочитайте установку дня. Вода, чай или чёрный кофе — и спокойно по плану.');
   if(r.water)r.water_t.split(/[,; ]+/).filter(s=>/^\d{1,2}:\d{2}$/.test(s)).forEach((tm,i)=>daily('water'+i,tm.padStart(5,'0'),'Стакан воды',(waterNorm(curDay())?'Ваша норма — '+(waterNorm(curDay()).ml/1000).toFixed(1).replace('.',',')+' л в день. ':'')+'Отметьте стакан в приложении.'));
+  if(r.window&&first>30)daily('mwin',maintWin(),'Пищевое окно','Поддержка: 1–2 приёма, белок + овощи, последний — за 1,5–2 ч до сна.');
+  if(r.evening&&first>30)for(let n=first;n<=last;n++)if((n-30)%7===0)ev.push({uid:'mweek-'+n,n,time:addMin(r.evTime,10),title:'Итоги недели поддержки',desc:'Талия и ваши пять правил — 2 минуты.'});
   if(r.window)for(let n=first;n<=30;n++){const dd=DAYS[n-1];const tt=targetTime(dd);if(tt&&!dd.fri)ev.push({uid:'window-'+n,n,time:tt.padStart(5,'0'),title:'Ориентир пищевого окна: '+dd.t,desc:'День '+n+'. '+dd.dish+' Если голода нет — можно подождать.'})}
   if(r.friday)for(let n=first;n<=30;n++){const dd=DAYS[n-1];if(dd.fri){ev.push({uid:'fri-'+n,n,time:addMin(p.wake,10),title:'Пятница: '+FRI[dd.fri].n+' или длительная пауза',desc:FRI[dd.fri].d});
       if(n-1>=first&&DAYS[n-1].w>1)ev.push({uid:'thu-'+n,n:n-1,time:'16:00',title:'Завтра разгрузка',desc:'Если планируете длительную паузу — после последнего приёма нажмите «Начать паузу» в приложении.'})}}
@@ -758,7 +857,7 @@ function renderRem(){const r=REM();
   ${row('evening','Вечерний трекер','',r.evening?`<div class="field" style="margin:-4px 0 6px 38px"><input type="time" data-rv="evTime" value="${esc(r.evTime)}"></div>`:'')}
   ${row('night','Магний и вечерний настрой','за час до отбоя',r.night?`<div class="field" style="margin:-4px 0 6px 38px"><label>Отбой</label><input type="time" data-rv="bed" value="${esc(r.bed)}"></div>`:'')}
   <button class="btn wide" id="ics" style="margin-top:8px">Добавить в календарь</button><div class="tiny muted" style="text-align:center;margin-top:6px">${remList().length} напоминаний до конца программы</div><button hidden></button>
-  <div class="tiny muted" style="margin-top:8px;line-height:1.4">${r.exported?'Уже добавлено '+new Date(r.exported).toLocaleDateString('ru-RU')+'. После изменения времени удалите календарь «Гипно-стройность» и добавьте заново.':'На iPhone откроется окно «Добавить все» — подтвердите.'} Напоминания ставятся с сегодняшнего дня до 30-го.</div></div>`}
+  <div class="tiny muted" style="margin-top:8px;line-height:1.4">${curDay()>30?'В поддержке напоминания ставятся на 30 дней вперёд — раз в месяц добавляйте снова. ':''}${r.exported?'Уже добавлено '+new Date(r.exported).toLocaleDateString('ru-RU')+'. После изменения времени удалите календарь «Гипно-стройность» и добавьте заново.':'На iPhone откроется окно «Добавить все» — подтвердите.'} Напоминания ставятся с сегодняшнего дня до 30-го.</div></div>`}
 function bindRem(){
   document.querySelectorAll('[data-rm]').forEach(el=>el.onclick=()=>{const r=REM();r[el.dataset.rm]=!r[el.dataset.rm];save();rerender()});
   document.querySelectorAll('[data-rv]').forEach(el=>el.onchange=()=>{REM()[el.dataset.rv]=el.value.trim();save();rerender()});
@@ -805,7 +904,7 @@ function weekPrompt(){const t=curDay(),now=new Date(),today=iso(now);if(!S.profi
   let w=null;for(let k=4;k>=1;k--){const r=S.weeks[k]||{};const due=t>k*7||(t===k*7&&now.getHours()>=17);if(due&&!r.done){w=k;break}}
   const fin=(t>30||(t===30&&now.getHours()>=17))&&!S.final.done;
   if(fin&&S.final.snooze!==today){setTimeout(async()=>{if($('#ov'))return;const ok=await ask('30 дней позади! Подведём итог: старт → день 30 и пять правил на 90 дней.',{ok:'Подвести',cancel:'Позже'});if(ok){VIEW.tab='progress';VIEW.week='final';render();scrollTo(0,0)}else{S.final.snooze=today;save()}},600);return}
-  if(!w)return;const r=S.weeks[w]||(S.weeks[w]={});if(r.snooze===today)return;
+  if(!w||t>37)return;const r=S.weeks[w]||(S.weeks[w]={});if(r.snooze===today)return;
   setTimeout(async()=>{if($('#ov'))return;const ok=await ask('Неделя '+w+' завершена. Подведём итоги? Это 3 минуты: обхваты и четыре коротких вопроса.',{ok:'Подвести',cancel:'Позже'});
     if(ok){VIEW.tab='progress';VIEW.week=w;render();scrollTo(0,0)}else{r.snooze=today;save()}},600)}
 
@@ -879,6 +978,7 @@ function renderMe(){const p=S.profile;
     <div class="field"><label>Стартовые бёдра</label><input data-p="hips0" inputmode="decimal" value="${esc(p.hips0)}"></div>
     <div class="field"><label>Стартовая грудь</label><input data-p="chest0" inputmode="decimal" value="${esc(p.chest0)}"></div>
     <div class="field"><label>Стартовая рука</label><input data-p="arm0" inputmode="decimal" value="${esc(p.arm0)}"></div>
+    <div class="field"><label>Первый приём в поддержке</label><input type="time" data-p="mwin" value="${esc(p.mwin||'13:00')}"></div>
     <div class="field"><label>Звук таймера планки</label><select data-p="sound"><option value="on" ${p.sound!=='off'?'selected':''}>Включён</option><option value="off" ${p.sound==='off'?'selected':''}>Выключен</option></select></div></div>
     <div class="field"><label>Моя цель на 30 дней</label><textarea data-p="goal">${esc(p.goal)}</textarea></div></div>
   ${renderCloud()}
@@ -887,9 +987,11 @@ function renderMe(){const p=S.profile;
     <div class="row"><button class="btn ghost sm" id="exp">Сохранить копию</button><button class="btn ghost sm" id="imp">Загрузить копию</button></div>
     <input type="file" id="impf" accept=".json,application/json" hidden>
     ${S.fastScr?`<button class="btn ghost sm" id="refast" style="margin-top:14px;display:block">Пройти заново анкету длительной паузы</button>`:''}
+    ${curDay()>30?`<button class="btn ghost sm" id="new-cycle" style="margin-top:14px;display:block">Начать новый круг 30 дней</button>`:''}
     <button class="btn ghost sm" id="reset" style="margin-top:14px;color:#b33">Начать программу заново</button></div>
-  <div class="tiny muted" style="text-align:center;padding:10px">Гипно-стройность • v0.9</div>`}
+  <div class="tiny muted" style="text-align:center;padding:10px">Гипно-стройность • v1.0</div>`}
 function bindMe(){
+  const ncb=$('#new-cycle');if(ncb)ncb.onclick=newCycle;
   bindCloud();
   const rf=$('#refast');if(rf)rf.onclick=()=>{delete S.fastScr;save();toast('Анкета сброшена — она откроется в пятницу');rerender()};
   bindRem();
@@ -912,14 +1014,14 @@ function render(){
   const t=curDay();
   const pi=prepInfo();
   const fb=S.fast&&!S.fast.end?`<div class="card" id="fast-banner" style="background:var(--good-weak);border-color:var(--good);padding:10px 14px;cursor:pointer"><div class="row between"><b class="small">Пищевая пауза идёт</b><span class="small" id="fb-t">${fmtDur(Date.now()-S.fast.start)}</span></div></div>`:'';
-  let top=`<div class="top">${logo()}<div><div class="ttl">Гипно-стройность</div><div class="sub">${t<1?(pi&&pi.active?'подготовка • день 1 через '+(1-t)+' дн.':'старт через '+(1-t)+' дн.'):t>30?'программа завершена':'день '+t+' из 30'}</div></div></div>`;
+  let top=`<div class="top">${logo()}<div><div class="ttl">Гипно-стройность</div><div class="sub">${t>30?'поддержка • день '+Math.min(t-30,90)+' из 90':t<1?(pi&&pi.active?'подготовка • день 1 через '+(1-t)+' дн.':'старт через '+(1-t)+' дн.'):t>30?'программа завершена':'день '+t+' из 30'}</div></div></div>`;
   let body='';
   if(VIEW.tab!=='today'||VIEW.day)top+=fb;
   setTimeout(()=>{const b=$('#fast-banner');if(b)b.onclick=()=>{VIEW.tab='today';VIEW.day=S.fast.day!==curDay()?S.fast.day:null;render();scrollTo(0,0)};clearInterval(window._fbI);window._fbI=setInterval(()=>{const e=$('#fb-t');if(e&&S.fast&&!S.fast.end)e.textContent=fmtDur(Date.now()-S.fast.start)},15000)},0);
   if(VIEW.tab==='today'&&!VIEW.day&&pi&&pi.active){$('#app').innerHTML=top+renderPrep(pi);bindDay(0);return}
+  if(VIEW.tab==='today'&&!VIEW.day&&t>30){const M=t-30;$('#app').innerHTML=top+renderMaint(M);bindMaint(M);if(!VIEW._wp){VIEW._wp=1;weekPrompt()}return}
   if(VIEW.tab==='today'){const n=VIEW.day||Math.min(30,Math.max(1,t));
     if(VIEW.day&&VIEW.day!==t)top+=`<button class="back" id="to-today">‹ К сегодняшнему дню</button>`;
-    if(t>30&&!VIEW.day)top+=`<div class="card"><b>30 дней пройдены.</b> <span class="muted">Подведите итог во вкладке «Прогресс».</span></div>`;
     body=renderDay(n);$('#app').innerHTML=top+body;bindDay(n);if(!VIEW.day&&!VIEW._wp){VIEW._wp=1;weekPrompt()}const b=$('#to-today');if(b)b.onclick=()=>{VIEW.day=null;render()};return}
   if(VIEW.tab==='plan'){$('#app').innerHTML=top+renderPlan();document.querySelectorAll('[data-day]').forEach(el=>el.onclick=()=>{VIEW.tab='today';VIEW.day=+el.dataset.day;render();scrollTo(0,0)});return}
   if(VIEW.tab==='progress'){$('#app').innerHTML=top+renderProgress();bindProgress();return}

@@ -168,7 +168,7 @@ const EXINFO={
   plank:{n:'Планка',img:'media/plank.jpg',t:'Опора на предплечья, тело — одна линия, живот подтянут. Цель — не рекорд, а хорошая техника.'},
   lunge:{n:'Выпады',img:'media/lunge.jpg',t:'Вперёд или назад. Если глубокий выпад неудобен — уменьшите амплитуду.'},
   crunch:{n:'Скручивания',img:'media/crunch.jpg',t:'Лёгкие скручивания: поясница прижата, подъём за счёт пресса, без рывков шеей.'},
-  bottle:{n:'Приседание + жим бутылок',img:'media/bottle.jpg',t:'Бутылки у плеч → присед → подъём + жим над головой. Начните с бутылок 0,5 л. Если техника распадается — оставайтесь на прошлом объёме.'}
+  bottle:{n:'Приседание + жим гантелей',img:'media/bottle.jpg',t:'Гантели у плеч → присед → на подъёме жим над головой одним движением. Начните с лёгких гантелей 2–4 кг в каждой руке (мужчинам можно 4–6 кг). Нет гантелей — подойдут бутылки с водой 0,5–1,5 л. Если техника распадается — оставайтесь на прошлом объёме.'}
 };
 let S=load(), VIEW={tab:'today',day:null,art:null}, tick=null, plankT=null;
 function load(){try{return JSON.parse(localStorage.getItem(KEY))||{days:{},weeks:{},final:{}}}catch(e){return {days:{},weeks:{},final:{}}}}
@@ -197,6 +197,16 @@ function prepInfo(){const p=S.profile;if(!p.prep||p.prep>=p.start)return null;co
   const N=Math.round((b-a)/864e5),k=Math.floor((t-a)/864e5)+1;return {N,k,active:k>=1&&k<=N}}
 function fmtDur(ms){if(ms<0)ms=0;const m=Math.floor(ms/6e4);return Math.floor(m/60)+' ч '+String(m%60).padStart(2,'0')+' мин'}
 function num(v){const x=parseFloat(String(v??'').replace(',','.'));return isNaN(x)?null:x}
+function waterNorm(n){const p=S.profile||{},x=n>0?(S.days[n]||{}):{};
+  let w=null;for(let i=Math.max(1,n);i>=1;i--){const v=num((S.days[i]||{}).weight);if(v){w=v;break}}w=w||num(p.w0);const h=num(p.height),sex=p.sex;
+  if(!w||!sex)return null;const k=sex==='f'?31:35;let ref=w,why='';
+  if(h&&w/((h/100)**2)>=25&&h-100<w){ref=h-100;why=' (при лишнем весе — от идеального: рост − 100)'}
+  const parts=[[k+' мл × '+f1(ref)+' кг'+why,ref*k]];
+  const dd=n>0?DAYS[n-1]:null;const trained=n>0&&(((x.train||'').length>0)||(x.chk||{}).z2||(dd&&dd.ex.length&&dd.ex.every(e=>((x.sets||{})[e.k]||[]).filter(Boolean).length>=e.s)));
+  if(trained)parts.push(['тренировка сегодня',500]);
+  const ml=Math.round(parts.reduce((a,q)=>a+q[1],0)/50)*50;return {ml,parts}}
+function glassMl(){return +(S.profile&&S.profile.glass)||250}
+function waterMl(x){return x.wml!=null?x.wml:(x.water||0)*250}
 function stepsLabel(dd){return dd.w===4?'≈'+dd.steps:dd.steps}
 
 /* ---------- оценка выполнения дня ---------- */
@@ -207,7 +217,7 @@ function score(n){
   add(num(x.steps)!==null&&num(x.steps)>=dd.stepsMin);
   add(num(x.plank)!==null&&num(x.plank)>=dd.plank);
   dd.ex.forEach(e=>add(((x.sets||{})[e.k]||[]).filter(Boolean).length>=e.s));
-  add((x.water||0)>=6);
+  {const nm=waterNorm(n);add(waterMl(x)>=(nm?nm.ml*0.9:1500))}
   add(!!(x.chk||{}).supp);
   add(!!(x.chk||{}).mg);
   add(num(x.weight)!==null);
@@ -231,6 +241,8 @@ function renderOnboarding(){
     <div class="tiny muted" id="ob-prep" style="margin:-4px 0 10px;line-height:1.4"></div>
     <div class="grid2">
       <div class="field"><label>Обычно встаю в</label><input id="ob-wake" type="time" value="06:30"></div>
+      <div class="field"><label>Пол</label><select id="ob-sex"><option value="m">Мужской</option><option value="f">Женский</option></select></div>
+      <div class="field"><label>Рост, см</label><input id="ob-h" inputmode="numeric" placeholder="175"></div>
       <div class="field"><label>Вес, кг</label><input id="ob-w" inputmode="decimal" placeholder="85,0"></div>
       <div class="field"><label>Талия, см</label><input id="ob-waist" inputmode="decimal" placeholder="90"></div>
       <div class="field"><label>Энергия 1–10</label><input id="ob-en" inputmode="numeric" placeholder="6"></div>
@@ -252,7 +264,7 @@ function renderOnboarding(){
   $('#ob-ok').onclick=()=>{$('#ob-ok').classList.toggle('on');$('#ob-go').disabled=!$('#ob-ok').classList.contains('on')};
   $('#ob-go').onclick=()=>{
     const st=$('#ob-start').value||iso(new Date());
-    S.profile={name:$('#ob-name').value.trim(),prep:st,start:mondayFrom(st),wake:$('#ob-wake').value||'06:30',goal:$('#ob-goal').value.trim(),w0:$('#ob-w').value,waist0:$('#ob-waist').value,en0:$('#ob-en').value,created:Date.now()};
+    S.profile={name:$('#ob-name').value.trim(),prep:st,start:mondayFrom(st),sex:$('#ob-sex').value,height:$('#ob-h').value.trim(),wake:$('#ob-wake').value||'06:30',goal:$('#ob-goal').value.trim(),w0:$('#ob-w').value,waist0:$('#ob-waist').value,en0:$('#ob-en').value,created:Date.now()};
     if(S.profile.w0){D(1).weight=S.profile.w0}
     save();VIEW.tab='today';render();
   };
@@ -286,12 +298,12 @@ function renderPrep(pi){
   h+=`<div class="card"><h3>Питание в подготовке</h3><div class="small" style="line-height:1.45">Ешьте как обычно, но уже <b>без перекусов между приёмами</b> и <b>без сладких напитков</b>. Пищевое окно и разгрузки начнутся с понедельника.</div>
     <div style="margin-top:12px"><div class="tiny muted" style="font-weight:600">Голод перед едой (1 — нет, 10 — очень сильный)</div>${scaleBlock('hb',x.hb)}</div>
     <div style="margin-top:10px"><div class="tiny muted" style="font-weight:600">Сытость после еды (1 — голоден, 10 — переел)</div>${scaleBlock('sa',x.sa)}</div></div>`;
-  const w=x.water||0;
+
   h+=`<div class="card"><h3>Движение</h3>
     <div class="field"><label>Шаги сегодня — просто посчитайте, сколько вы ходите сейчас</label><input inputmode="numeric" data-f="steps" value="${esc(x.steps)}"></div>
     <div class="ex" style="border-top:none;padding-top:0"><img src="${EXINFO.plank.img}" alt=""><div style="flex:1"><div style="font-weight:700">Пробная планка</div><div class="tiny muted">15–20 с в хорошей технике${num(x.plank)!==null?' • сделано: '+num(x.plank)+' с':''}</div>
     <div class="row" style="margin-top:8px"><div class="timer" id="plank-t" style="font-size:24px">0 с</div><button class="btn sm" id="plank-go">Старт</button><button class="btn ghost sm" id="plank-save" hidden>Записать</button></div></div></div></div>`;
-  h+=`<div class="card"><h3>Вода <span class="r">${(w*0.25).toFixed(2).replace('.',',').replace(/0$/,'')} л из 1,5–2 л</span></h3><div class="water">${Array.from({length:8},(_,i)=>`<div class="glass ${i<w?'on':''}" data-g="${i+1}"></div>`).join('')}</div></div>`;
+  h+=waterCard(0,x);
   h+=`<div class="card mind"><h3>Вечерний настрой <span class="r">≈5 мин</span></h3><ol style="margin:0;padding-left:20px;line-height:1.5;font-size:15px">${EVENING[0].map(s=>`<li style="margin-bottom:6px">${esc(s)}</li>`).join('')}</ol>${chk(0,'evening','Сделал(а) вечерний настрой')}</div>`;
   return h;
 }
@@ -332,7 +344,7 @@ function renderDay(n){
     h+=`<div class="card"><h3>Пищевая пауза <span class="r">ориентир: ${esc(dd.t)}</span></h3>`;
     if(x.mealTime){
       h+=`<div class="row between"><div><div class="tiny muted">Окно открыто в</div><div class="timer">${esc(x.mealTime)}</div></div><span class="pill good">✓ выполнено</span></div>
-      <div class="tiny muted" style="margin-top:6px">Второй приём — только если через несколько часов вернулся голод. Последний плотный приём — за 1–2 ч до сна.</div>
+      <div class="tiny muted" style="margin-top:6px">Второй приём — только если через несколько часов вернулся голод. Последний плотный приём — за 1,5–2 ч до сна.</div>
       <button class="btn ghost sm" id="meal-undo" style="margin-top:10px">Изменить</button>`;
     } else if(isToday){
       h+=`<div class="tiny muted">Без еды с подъёма (${esc(S.profile.wake)})</div>
@@ -369,10 +381,7 @@ function renderDay(n){
   </div>`;
 
   // Вода
-  const w=x.water||0;
-  h+=`<div class="card"><h3>Вода <span class="r">${(w*0.25).toFixed(2).replace('.',',').replace(/0$/,'')} л из 1,5–2 л</span></h3>
-    <div class="water">${Array.from({length:8},(_,i)=>`<div class="glass ${i<w?'on':''}" data-g="${i+1}"></div>`).join('')}</div>
-    <div class="tiny muted" style="margin-top:8px">1 стакан = 250 мл. Сладкие напитки убираем.</div></div>`;
+  h+=waterCard(n,x);
 
   // Вечерний настрой
   const ev=EVENING[dd.w-1];
@@ -402,6 +411,13 @@ function renderDay(n){
   if(n===30) h+=`<div class="card" style="border-color:var(--accent)"><h3>Финиш</h3><div class="small">30 дней завершены. Система остаётся.</div><button class="btn wide" style="margin-top:10px" id="go-final">Старт → день 30</button></div>`;
   return h;
 }
+function waterCard(n,x){const nm=waterNorm(n),g=glassMl(),ml=waterMl(x),norm=nm?nm.ml:2000,cnt=Math.max(6,Math.ceil(norm/g)),fil=Math.round(ml/g);
+  const L=v=>(Math.round(v/50)*50/1000).toFixed(2).replace('.',',').replace(/0$/,'')+' л';
+  return `<div class="card"><h3>Вода <span class="r">${L(ml)} из ${L(norm)}</span></h3>
+    <div class="water">${Array.from({length:cnt},(_,i)=>`<div class="glass ${i<fil?'on':''}" data-g="${i+1}"></div>`).join('')}</div>
+    <div style="height:6px;background:var(--surface-2);border-radius:6px;overflow:hidden;margin-top:10px"><i style="display:block;height:100%;width:${Math.min(100,ml/norm*100)}%;background:#7fb2e5"></i></div>
+    <div class="tiny muted" style="margin-top:8px;line-height:1.4">${nm?'Норма: '+nm.parts.map(q=>q[0]).join(' + ')+'.':'Укажите пол и рост в профиле — норма рассчитается по весу. Пока ориентир 2 л.'} 1 стакан = ${g} мл. Чай без сахара считается, сладкие напитки — нет.</div>
+    ${ml>=norm&&ml>0?'<div class="tiny" style="color:var(--good);margin-top:4px;font-weight:700">Норма воды выполнена 💧</div>':''}</div>`}
 function scaleBlock(k,v){return `<div class="scale">${Array.from({length:10},(_,i)=>`<button data-sc="${k}:${i+1}" class="${v===i+1?'on':''}">${i+1}</button>`).join('')}</div>`}
 /* ---------- SOS ---------- */
 let SOS=null;
@@ -479,7 +495,7 @@ function bindDay(n){
   const x=X(n);
   document.querySelectorAll('[data-c]').forEach(el=>el.onclick=()=>{const c=x.chk||(x.chk={});c[el.dataset.c]=!c[el.dataset.c];save();rerender()});
   document.querySelectorAll('[data-set]').forEach(el=>el.onclick=()=>{const [k,i]=el.dataset.set.split(':');x.sets=x.sets||{};const a=x.sets[k]||(x.sets[k]=[]);a[+i]=!a[+i];save();if(navigator.vibrate)navigator.vibrate(15);rerender()});
-  document.querySelectorAll('[data-g]').forEach(el=>el.onclick=()=>{const g=+el.dataset.g;x.water=(x.water===g?g-1:g);save();rerender()});
+  document.querySelectorAll('[data-g]').forEach(el=>el.onclick=()=>{const g=+el.dataset.g,gm=glassMl(),cur=Math.round(waterMl(x)/gm);x.wml=(cur===g?g-1:g)*gm;delete x.water;save();rerender()});
   document.querySelectorAll('[data-f]').forEach(el=>el.onchange=()=>{x[el.dataset.f]=el.value.trim();save();rerender(true)});
   document.querySelectorAll('[data-sc]').forEach(el=>el.onclick=()=>{const [k,v]=el.dataset.sc.split(':');x[k]=x[k]===+v?null:+v;save();rerender()});
   document.querySelectorAll('[data-fri]').forEach(el=>el.onclick=()=>{const v=el.dataset.fri;
@@ -635,7 +651,7 @@ const EXTRA=[
   {h:'ЧТО ТАКОЕ ZONE 2',t:'Zone 2 — спокойная аэробная работа низкой или умеренной интенсивности. Дыхание становится чаще, но остаётся контролируемым: вы можете говорить полными предложениями без выраженной одышки. Подойдут быстрая ходьба, дорожка с небольшим наклоном, велосипед, эллипс или очень лёгкий бег.'},
   {h:'КАК ПОНЯТЬ, ЧТО ВЫ В ZONE 2',t:'Главный ориентир — разговорный тест: темп ощутимый, но устойчивый, без работы «на пределе». Пульс индивидуален, поэтому не привязываемся к одной цифре для всех. Можно ориентироваться на самочувствие и данные своего трекера.'},
   {h:'КОГДА ВЫПОЛНЯТЬ ZONE 2',t:'Zone 2 можно выполнять до первого приёма пищи, если вы хорошо переносите такую нагрузку. Продолжительность и частота указаны в ежедневном плане. Снижение жировой массы определяется всей системой питания и расхода энергии.'},
-  {h:'ДОМАШНИЙ СИЛОВОЙ КОМПЛЕКС',t:'Это отдельная часть программы. Комплекс прогрессирует по неделям: приседания и отжимания; затем выпады и лёгкие скручивания; на 4-й неделе — приседание с двумя бутылками и жим над головой. Планка остаётся ежедневной привычкой.'}]},
+  {h:'ДОМАШНИЙ СИЛОВОЙ КОМПЛЕКС',t:'Это отдельная часть программы. Комплекс прогрессирует по неделям: приседания и отжимания; затем выпады и лёгкие скручивания; на 4-й неделе — приседание с гантелями и жим над головой. Планка остаётся ежедневной привычкой.'}]},
  {id:'sweet',cat:'ПИТАНИЕ',title:'Если хочется сладкого',blocks:[
   {h:'ПРОСТЫЕ ВАРИАНТЫ',t:'После основного приёма пищи можно выбрать яблоко или грушу, ягоды с творогом/греческим йогуртом без сахара либо домашнюю творожную запеканку. Смысл простой: если хочется сладкого, выбираем десерт, который одновременно даёт белок и насыщение, а не превращается в отдельный бесконтрольный приём пищи.'},
   {h:'БЕЛКОВАЯ ТВОРОЖНО-ЯГОДНАЯ ЗАПЕКАНКА',t:'• 3 небольших банана (200–250 г очищенных) • 40 г миндальной муки • 6 крупных яиц • 300 г высокобелкового творога/cottage cheese • 75 г сывороточного изолята без мальтодекстрина • 200 г черники или других ягод'},
@@ -650,7 +666,7 @@ function libList(){
 function renderLib(){
   if(VIEW.art==='ex'){
     return `<button class="back" data-back>‹ Справочник</button><div class="card art"><h2>Техника упражнений</h2>${Object.values(EXINFO).map(e=>`<img src="${e.img}" alt="" style="width:100%;border-radius:14px;border:1px solid var(--line);margin-top:8px"><h4>${e.n}</h4><p>${e.t}</p>`).join('')}
-    <h4>Прогрессия</h4><p>Неделя 2: приседания и отжимания с 5 × 5, каждый день +1 повторение в подходе. Неделя 3: выпады 3 × 5 на ногу + скручивания 3 × 8, постепенно добавляем. Неделя 4: приседание + жим бутылок с 5 × 10. Не работайте до отказа.</p></div>`;
+    <h4>Прогрессия</h4><p>Неделя 2: приседания и отжимания с 5 × 5, каждый день +1 повторение в подходе. Неделя 3: выпады 3 × 5 на ногу + скручивания 3 × 8, постепенно добавляем. Неделя 4: приседание + жим гантелей с 5 × 10, постепенно до 5 × 15. Не работайте до отказа.</p></div>`;
   }
   if(VIEW.art){const a=libList().find(s=>s.id===VIEW.art);
     return `<button class="back" data-back>‹ Справочник</button><div class="card art"><div class="tiny" style="color:var(--accent);font-weight:800;letter-spacing:.06em">${esc(a.cat)}</div><h2>${esc(a.title)}</h2>${a.blocks.map(b=>`<h4>${esc(b.h)}</h4>${para(b.t)}`).join('')}</div>`}
@@ -671,7 +687,7 @@ function remList(){
   const r=REM(),p=S.profile,ev=[];const first=Math.max(1,curDay());
   const daily=(id,time,title,desc)=>{for(let n=first;n<=30;n++)ev.push({uid:id+'-'+n,n,time,title,desc})};
   if(r.morning)daily('morning',addMin(p.wake,5),'Установка дня','Откройте Гипно-стройность и прочитайте установку дня. Вода, чай или чёрный кофе — и спокойно по плану.');
-  if(r.water)r.water_t.split(/[,; ]+/).filter(s=>/^\d{1,2}:\d{2}$/.test(s)).forEach((tm,i)=>daily('water'+i,tm.padStart(5,'0'),'Стакан воды','Цель 1,5–2 л в день. Отметьте стакан в приложении.'));
+  if(r.water)r.water_t.split(/[,; ]+/).filter(s=>/^\d{1,2}:\d{2}$/.test(s)).forEach((tm,i)=>daily('water'+i,tm.padStart(5,'0'),'Стакан воды',(waterNorm(curDay())?'Ваша норма — '+(waterNorm(curDay()).ml/1000).toFixed(1).replace('.',',')+' л в день. ':'')+'Отметьте стакан в приложении.'));
   if(r.window)for(let n=first;n<=30;n++){const dd=DAYS[n-1];const tt=targetTime(dd);if(tt&&!dd.fri)ev.push({uid:'window-'+n,n,time:tt.padStart(5,'0'),title:'Ориентир пищевого окна: '+dd.t,desc:'День '+n+'. '+dd.dish+' Если голода нет — можно подождать.'})}
   if(r.friday)for(let n=first;n<=30;n++){const dd=DAYS[n-1];if(dd.fri){ev.push({uid:'fri-'+n,n,time:addMin(p.wake,10),title:'Пятница: '+FRI[dd.fri].n+' или длительная пауза',desc:FRI[dd.fri].d});
       if(n-1>=first&&DAYS[n-1].w>1)ev.push({uid:'thu-'+n,n:n-1,time:'16:00',title:'Завтра разгрузка',desc:'Если планируете длительную паузу — после последнего приёма нажмите «Начать паузу» в приложении.'})}}
@@ -781,6 +797,10 @@ function renderMe(){const p=S.profile;
     <div class="field"><label>Имя</label><input data-p="name" value="${esc(p.name)}"></div>
     <div class="grid2"><div class="field"><label>День 1 (понедельник)</label><input type="date" data-p="start" value="${esc(p.start)}"></div>
     <div class="field"><label>Обычно встаю в</label><input type="time" data-p="wake" value="${esc(p.wake)}"></div>
+    <div class="field"><label>Пол</label><select data-p="sex"><option value="m" ${p.sex!=='f'?'selected':''}>Мужской</option><option value="f" ${p.sex==='f'?'selected':''}>Женский</option></select></div>
+    <div class="field"><label>Рост, см</label><input data-p="height" inputmode="numeric" value="${esc(p.height)}"></div>
+    <div class="field"><label>Стакан воды, мл</label><input data-p="glass" inputmode="numeric" value="${esc(p.glass||250)}"></div>
+    <div class="field"><label></label></div>
     <div class="field"><label>Стартовый вес</label><input data-p="w0" inputmode="decimal" value="${esc(p.w0)}"></div>
     <div class="field"><label>Стартовая талия</label><input data-p="waist0" inputmode="decimal" value="${esc(p.waist0)}"></div></div>
     <div class="field"><label>Моя цель на 30 дней</label><textarea data-p="goal">${esc(p.goal)}</textarea></div></div>
@@ -791,7 +811,7 @@ function renderMe(){const p=S.profile;
     <input type="file" id="impf" accept=".json,application/json" hidden>
     ${S.fastScr?`<button class="btn ghost sm" id="refast" style="margin-top:14px;display:block">Пройти заново анкету длительной паузы</button>`:''}
     <button class="btn ghost sm" id="reset" style="margin-top:14px;color:#b33">Начать программу заново</button></div>
-  <div class="tiny muted" style="text-align:center;padding:10px">Гипно-стройность • v0.7</div>`}
+  <div class="tiny muted" style="text-align:center;padding:10px">Гипно-стройность • v0.8</div>`}
 function bindMe(){
   bindCloud();
   const rf=$('#refast');if(rf)rf.onclick=()=>{delete S.fastScr;save();toast('Анкета сброшена — она откроется в пятницу');rerender()};

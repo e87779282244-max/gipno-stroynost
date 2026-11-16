@@ -373,7 +373,7 @@ function renderDay(n){
 
   // Движение
   h+=`<div class="card"><h3>Движение • план</h3>
-    ${chk(n,'stepsChk','Шаги: '+stepsLabel(dd),'впишите итог вечером — отметится автоматически',num(x.steps)!==null&&num(x.steps)>=dd.stepsMin)}
+    ${stepsBlock(x,dd.stepsMin,stepsLabel(dd))}
     <div class="ex"><img src="${EXINFO.plank.img}" alt=""><div style="flex:1">
       <div style="font-weight:700">Планка ≈${dd.plank} с</div>
       <div class="tiny muted">в хорошей технике${num(x.plank)!==null?' • сделано: '+num(x.plank)+' с':''}</div>
@@ -421,6 +421,12 @@ function waterCard(n,x){const nm=waterNorm(n),g=glassMl(),ml=waterMl(x),norm=nm?
     <div style="height:6px;background:var(--surface-2);border-radius:6px;overflow:hidden;margin-top:10px"><i style="display:block;height:100%;width:${Math.min(100,ml/norm*100)}%;background:#7fb2e5"></i></div>
     <div class="tiny muted" style="margin-top:8px;line-height:1.4">${nm?'Норма: '+nm.parts.map(q=>q[0]).join(' + ')+'.':'Укажите пол и рост в профиле — норма рассчитается по весу. Пока ориентир 2 л.'} 1 стакан = ${g} мл. Чай без сахара считается, сладкие напитки — нет.</div>
     ${ml>=norm&&ml>0?'<div class="tiny" style="color:var(--good);margin-top:4px;font-weight:700">Норма воды выполнена 💧</div>':''}</div>`}
+function stepsBlock(x,goal,label){const v=num(x.steps),ok=v!==null&&v>=goal,pct=v?Math.min(100,v/goal*100):0;
+  const src=x.stepsSrc==='health'?'из «Здоровья»'+(x.stepsAt?' • '+new Date(x.stepsAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):''):(v!==null?'вписано вручную':'');
+  return `<div style="padding:4px 0 12px"><div class="row between"><div style="font-weight:700">Шаги</div><div class="tiny muted">цель: ${esc(label)}</div></div>
+  <div class="row" style="align-items:baseline;gap:8px;margin-top:4px"><div class="timer" style="font-size:28px;color:${ok?'var(--good)':'inherit'}">${v!==null?Math.round(v).toLocaleString('ru-RU'):'—'}</div>${ok?'<span class="pill good">✓ цель</span>':''}</div>
+  <div style="height:8px;background:var(--surface-2);border-radius:8px;overflow:hidden;margin:6px 0"><i style="display:block;height:100%;width:${pct}%;background:${ok?'var(--good)':'#8f73d1'}"></i></div>
+  <div class="tiny muted">${src?src+'. ':''}${x.stepsSrc==='health'?'Обновляется автоматически.':'Подключите авто-шаги в Профиле или впишите вечером.'}</div></div>`}
 function scaleBlock(k,v){return `<div class="scale">${Array.from({length:10},(_,i)=>`<button data-sc="${k}:${i+1}" class="${v===i+1?'on':''}">${i+1}</button>`).join('')}</div>`}
 /* ---------- SOS ---------- */
 let SOS=null;
@@ -558,7 +564,7 @@ function stepsFromUrl(){try{const q=new URLSearchParams(location.search);const s
 function applyPendingSteps(){if(!S.profile)return;let a=[];try{a=JSON.parse(localStorage.getItem(PKEY)||'[]')}catch(e){}if(!a.length)return;
   let last=null;a.forEach(({d,v})=>{const n=Math.round((parseISO(d)-parseISO(S.profile.start))/864e5)+1;let x;
     if(n<1){S.prep=S.prep||{tasks:{},days:{}};x=S.prep.days[d]||(S.prep.days[d]={})}else if(n>30){x=X(-(n-30))}else x=D(n);
-    x.steps=String(Math.max(v,num(x.steps)||0));x.stepsSrc='health';last=v});
+    x.steps=String(Math.max(v,num(x.steps)||0));x.stepsSrc='health';x.stepsAt=Date.now();last=v});
   localStorage.removeItem(PKEY);save();if(CL.user){clearTimeout(CL.pushT);cloudPush()}if(last!==null)setTimeout(()=>toast('Шаги из «Здоровья»: '+last.toLocaleString('ru-RU')),300)}
 function appUrl(){return location.origin+location.pathname}
 function renderStepsHelp(){const u='https://e87779282244-max.github.io/gipno-stroynost/?steps=';
@@ -579,10 +585,9 @@ function renderStepsHelp(){const u='https://e87779282244-max.github.io/gipno-str
   ${st(10,'Проверьте: нажмите ▶ в правом нижнем углу','Откроется Safari с Гипно-стройностью и внизу мелькнёт «Шаги из «Здоровья»: …». Сравните число с приложением «Здоровье».')}
   ${st(11,'Сохраните: стрелка ‹ вверху слева','Название можно поменять, нажав на «Новая команда ⌄» вверху, например на «Шаги → Гипно-стройность».')}
   <div class="note" style="margin-top:4px"><b>Важно:</b> команда открывает приложение в Safari, а не на иконке. Поэтому один раз откройте ссылку в Safari и войдите там в тот же аккаунт, что и в приложении (Профиль → Облако). Тогда шаги через облако появятся и в иконке.</div>
-  <button class="btn ghost sm" id="steps-test" style="margin-top:10px">Проверить приём шагов: записать 1 234</button>
   </details></div>`}
 function bindStepsHelp(){const c=$('#steps-copy');if(c)c.onclick=async()=>{try{await navigator.clipboard.writeText($('#steps-url').value);toast('Адрес скопирован')}catch(e){$('#steps-url').select();toast('Выделите и скопируйте вручную')}};
-  const tb=$('#steps-test');if(tb)tb.onclick=()=>{location.href=appUrl()+'?steps=1234'}}
+}
 
 /* ---------- ПОДДЕРЖКА 90 ДНЕЙ ---------- */
 const MAINT_Q=["Результат — это не финиш, а новая точка отсчёта. Я сохраняю то, что построил(а).","Мои правила работают, когда я их повторяю. Сегодня я просто повторяю.","Я ем, когда выбираю есть. Это уже моя привычка, а не усилие.","Праздник — это люди и время, а не повод переесть. Я сам(а) решаю, сколько мне нужно.","Если день не получился, я возвращаюсь к своим правилам со следующего приёма пищи. Без наказаний и компенсаций.","Я замечаю голод и сытость. Тело подсказывает, а я слушаю.","Движение — часть моего дня, как чистка зубов. Шаги не обсуждаются.","Весы — это компас, а не судья. Я смотрю на среднее за неделю и спокойно корректирую курс.","Мне не нужна идеальная неделя. Мне нужна хорошая неделя, повторённая много раз.","Сладкое — осознанный выбор, а не автоматическая реакция. Я решаю, когда и сколько.","Я горжусь тем, что сделал(а), и берегу это каждый день.","Стройность — это не диета, а мой образ жизни."];
@@ -632,7 +637,7 @@ function renderMaint(M){
       ${fm==='unload'?`<p class="small" style="margin:12px 0 0;line-height:1.45">Выберите любой из четырёх разгрузочных дней программы — какой лучше переносите.</p>`:''}${fm==='fast'?fastBlock(-M):''}</div>`}
   const sa=maintStepsAvg();
   h+=`<div class="card"><h3>Движение</h3>
-    ${chk(-M,'stepsChk','Шаги: от '+(rs?'11 000–12 000':'10 000'),sa?'на 4-й неделе вы ходили в среднем '+sa.toLocaleString('ru-RU'):'впишите итог вечером',num(x.steps)!==null&&num(x.steps)>=(rs?11000:10000))}
+    ${stepsBlock(x,rs?11000:10000,'от '+(rs?'11 000–12 000':'10 000'))}
     <div class="ex"><img src="${EXINFO.plank.img}" alt=""><div style="flex:1"><div style="font-weight:700">Планка ≈${maintPlank()} с</div><div class="tiny muted">держим уровень${num(x.plank)!==null?' • сделано: '+num(x.plank)+' с':''}</div>
     <div class="row" style="margin-top:8px"><div class="timer" id="plank-t" style="font-size:24px">0 с</div><button class="btn sm" id="plank-go">Старт</button><button class="btn ghost sm" id="plank-save" hidden>Записать</button></div></div></div>
     ${chk(-M,'str','Силовая тренировка','2–3 раза в неделю: зал или домашний комплекс программы')}

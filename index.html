@@ -948,11 +948,13 @@ function deepMerge(a,b){ // b (телефон) поверх a (облако); м
   if(Array.isArray(a)&&Array.isArray(b)){const m=new Map();a.concat(b).forEach(x=>m.set(x&&x.ts?x.ts:JSON.stringify(x),x));return [...m.values()]}
   if(a&&b&&typeof a==='object'&&typeof b==='object'&&!Array.isArray(a)&&!Array.isArray(b)){const r={...a};for(const k in b)r[k]=k in a?deepMerge(a[k],b[k]):b[k];return r}
   return b===undefined||b===null||b===''?a:b}
-async function cloudPush(){if(!CL.user||!navigator.onLine)return;try{const now=Date.now();await cDoc().set({state:JSON.stringify(strip(S)),updated:now,v:1});S._sync=now;S._upd=Math.min(S._upd||now,now);save(true);CL.msg='Сохранено в облаке '+new Date(now).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});CL.err=false}catch(e){CL.msg='Не удалось сохранить в облако — повторим позже';CL.err=true}refreshCloudUI()}
+async function cloudPush(){if(!CL.user||!navigator.onLine||!S.profile)return;try{const now=Date.now();await cDoc().set({state:JSON.stringify(strip(S)),updated:now,v:1});S._sync=now;S._upd=Math.min(S._upd||now,now);save(true);CL.msg='Сохранено в облаке '+new Date(now).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});CL.err=false}catch(e){CL.msg='Не удалось сохранить в облако — повторим позже';CL.err=true}refreshCloudUI()}
 function cloudPushSoon(){if(!CL.user)return;clearTimeout(CL.pushT);CL.pushT=setTimeout(cloudPush,2500)}
 async function cloudPull(first){if(!CL.user||!navigator.onLine)return;let d;try{d=await cDoc().get()}catch(e){CL.msg='Нет связи с облаком';CL.err=true;refreshCloudUI();return}
-  if(!d.exists){await cloudPush();return}
+  const noCloud=()=>{CL.msg='В облаке этого аккаунта ('+(CL.user.email||'Google')+') пока нет данных программы. Если вы уже занимаетесь в приложении на другом устройстве — войдите там же способом и той же почтой, что и там (Профиль → Облако).';CL.err=true;refreshCloudUI()};
+  if(!d.exists){if(S.profile)await cloudPush();else noCloud();return}
   const c=d.data(),cs=JSON.parse(c.state||'{}'),localChanged=(S._upd||0)>(S._sync||0),cloudNewer=c.updated>(S._sync||0);
+  if(!cs.profile){if(S.profile)await cloudPush();else noCloud();return}
   if(!S.profile){S=Object.assign({days:{},weeks:{},final:{}},cs);S._sync=c.updated;S._upd=c.updated;save(true);toast('Данные загружены из облака');render();return}
   if(cloudNewer&&!localChanged){S=Object.assign({days:{},weeks:{},final:{}},cs);S._sync=c.updated;S._upd=c.updated;save(true);render();return}
   if(cloudNewer&&localChanged){if(first){const ch=await ask('В облаке и в этом телефоне разные данные. Объединить их? (рекомендуется)',{ok:'Объединить',cancel:'Другое'});
@@ -1017,7 +1019,7 @@ function renderMe(){const p=S.profile;
     ${S.fastScr?`<button class="btn ghost sm" id="refast" style="margin-top:14px;display:block">Пройти заново анкету длительной паузы</button>`:''}
     ${curDay()>30?`<button class="btn ghost sm" id="new-cycle" style="margin-top:14px;display:block">Начать новый круг 30 дней</button>`:''}
     <button class="btn ghost sm" id="reset" style="margin-top:14px;color:#b33">Начать программу заново</button></div>
-  <div class="tiny muted" style="text-align:center;padding:10px">Гипно-стройность • v1.1</div>`}
+  <div class="tiny muted" style="text-align:center;padding:10px">Гипно-стройность • v1.1.1</div>`}
 function bindMe(){
   bindStepsHelp();
   const ncb=$('#new-cycle');if(ncb)ncb.onclick=newCycle;

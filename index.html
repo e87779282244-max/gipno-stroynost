@@ -559,7 +559,7 @@ function applyPendingSteps(){if(!S.profile)return;let a=[];try{a=JSON.parse(loca
   let last=null;a.forEach(({d,v})=>{const n=Math.round((parseISO(d)-parseISO(S.profile.start))/864e5)+1;let x;
     if(n<1){S.prep=S.prep||{tasks:{},days:{}};x=S.prep.days[d]||(S.prep.days[d]={})}else if(n>30){x=X(-(n-30))}else x=D(n);
     x.steps=String(Math.max(v,num(x.steps)||0));x.stepsSrc='health';last=v});
-  localStorage.removeItem(PKEY);save();if(last!==null)setTimeout(()=>toast('Шаги из «Здоровья»: '+last.toLocaleString('ru-RU')),300)}
+  localStorage.removeItem(PKEY);save();if(CL.user){clearTimeout(CL.pushT);cloudPush()}if(last!==null)setTimeout(()=>toast('Шаги из «Здоровья»: '+last.toLocaleString('ru-RU')),300)}
 function appUrl(){return location.origin+location.pathname}
 function renderStepsHelp(){const u='https://e87779282244-max.github.io/gipno-stroynost/?steps=';
   return `<div class="card" id="steps-help"><h3>Шаги автоматически (iPhone)</h3>
@@ -949,7 +949,7 @@ function deepMerge(a,b){ // b (телефон) поверх a (облако); м
   if(a&&b&&typeof a==='object'&&typeof b==='object'&&!Array.isArray(a)&&!Array.isArray(b)){const r={...a};for(const k in b)r[k]=k in a?deepMerge(a[k],b[k]):b[k];return r}
   return b===undefined||b===null||b===''?a:b}
 async function cloudPush(){if(!CL.user||!navigator.onLine||!S.profile)return;try{const now=Date.now();await cDoc().set({state:JSON.stringify(strip(S)),updated:now,v:1});S._sync=now;S._upd=Math.min(S._upd||now,now);save(true);CL.msg='Сохранено в облаке '+new Date(now).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});CL.err=false}catch(e){CL.msg='Не удалось сохранить в облако — повторим позже';CL.err=true}refreshCloudUI()}
-function cloudPushSoon(){if(!CL.user)return;clearTimeout(CL.pushT);CL.pushT=setTimeout(cloudPush,2500)}
+function cloudPushSoon(){if(!CL.user)return;clearTimeout(CL.pushT);CL.pushT=setTimeout(()=>{CL.pushT=null;cloudPush()},2500)}
 async function cloudPull(first){if(!CL.user||!navigator.onLine)return;let d;try{d=await cDoc().get()}catch(e){CL.msg='Нет связи с облаком';CL.err=true;refreshCloudUI();return}
   const noCloud=()=>{CL.msg='В облаке этого аккаунта ('+(CL.user.email||'Google')+') пока нет данных программы. Если вы уже занимаетесь в приложении на другом устройстве — войдите там же способом и той же почтой, что и там (Профиль → Облако).';CL.err=true;refreshCloudUI()};
   if(!d.exists){if(S.profile)await cloudPush();else noCloud();return}
@@ -966,7 +966,7 @@ async function cloudStart(){if(!cloudAllowed())return;try{await fbLoad()}catch(e
   try{await CL.auth.getRedirectResult()}catch(e){CL.msg=fbErrText(e);CL.err=true}
   CL.auth.onAuthStateChanged(async u=>{CL.user=u||null;refreshCloudUI();if(u){await cloudPull(true);refreshCloudUI();await cloudPhotosSync();save(true);if(VIEW.tab==='progress')rerender()}});
   addEventListener('online',()=>{if(CL.user)cloudPull()});
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&CL.user)cloudPull()});}
+  document.addEventListener('visibilitychange',()=>{if(!CL.user)return;if(document.hidden){if(CL.pushT){clearTimeout(CL.pushT);CL.pushT=null;cloudPush()}}else cloudPull()});}
 function fbErrText(e){const c=(e&&e.code)||'';return ({'auth/invalid-email':'Неверный формат почты','auth/user-not-found':'Такой почты нет — зарегистрируйтесь','auth/wrong-password':'Неверный пароль','auth/invalid-credential':'Неверная почта или пароль','auth/email-already-in-use':'Эта почта уже зарегистрирована — войдите','auth/weak-password':'Пароль минимум 6 символов','auth/network-request-failed':'Нет интернета','auth/too-many-requests':'Слишком много попыток, подождите','auth/popup-closed-by-user':'Окно входа закрыто'})[c]||('Ошибка: '+(c||e.message||e))}
 async function fbDo(fn){CL.busy=true;CL.msg='';refreshCloudUI();try{await fbLoad();await fn()}catch(e){CL.msg=fbErrText(e);CL.err=true}CL.busy=false;refreshCloudUI()}
 function renderCloud(){
